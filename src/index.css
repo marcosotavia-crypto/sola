@@ -91,6 +91,9 @@
     height: 100vh;
     padding: 20px;
   }
+  .break-inside-avoid {
+    break-inside: avoid;
+  }
 }
 
 /* Animations */

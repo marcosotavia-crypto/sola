@@ -51,6 +51,22 @@ service cloud.firestore {
              (!('description' in data) || (data.description is string && data.description.size() < 500));
     }
 
+    function isValidMaterial(data) {
+      return data.keys().hasAll(['name', 'unit', 'createdAt']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.unit is string && data.unit.size() > 0 && data.unit.size() < 20 &&
+             data.createdAt is number;
+    }
+
+    function isValidModelConsumption(data) {
+      return data.keys().hasAll(['modelName', 'materialId', 'consumptionPerPair', 'createdAt']) &&
+             data.modelName is string && data.modelName.size() > 0 && data.modelName.size() < 100 &&
+             data.materialId is string &&
+             data.consumptionPerPair is number && data.consumptionPerPair >= 0 &&
+             data.createdAt is number &&
+             (!('size' in data) || (data.size is string && data.size.size() < 10));
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -75,6 +91,20 @@ service cloud.firestore {
       allow read: if true;
       allow create: if isValidProgramming(request.resource.data);
       allow update: if isValidProgramming(request.resource.data);
+      allow delete: if true;
+    }
+
+    match /materials/{materialId} {
+      allow read: if true;
+      allow create: if isValidMaterial(request.resource.data);
+      allow update: if isValidMaterial(request.resource.data);
+      allow delete: if true;
+    }
+
+    match /modelConsumptions/{consumptionId} {
+      allow read: if true;
+      allow create: if isValidModelConsumption(request.resource.data);
+      allow update: if isValidModelConsumption(request.resource.data);
       allow delete: if true;
     }
   }

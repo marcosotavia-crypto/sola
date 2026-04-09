@@ -12,7 +12,7 @@ import {
   orderBy
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { FootwearItem, ProductionStatus } from '../types';
+import { FootwearItem, ProductionStatus, Material, ModelConsumption } from '../types';
 
 const COLLECTION_NAME = 'productionItems';
 
@@ -247,6 +247,56 @@ export const productionService = {
       await batch.commit();
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, 'programmings');
+    }
+  },
+
+  async addMaterial(name: string, unit: string): Promise<void> {
+    if (!db) return;
+    try {
+      await addDoc(collection(db, 'materials'), {
+        name,
+        unit,
+        createdAt: Date.now()
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'materials');
+    }
+  },
+
+  async deleteMaterial(id: string): Promise<void> {
+    if (!db) return;
+    try {
+      const batch = writeBatch(db);
+      batch.delete(doc(db, 'materials', id));
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'materials');
+    }
+  },
+
+  async addModelConsumption(modelName: string, materialId: string, consumptionPerPair: number, size?: string): Promise<void> {
+    if (!db) return;
+    try {
+      await addDoc(collection(db, 'modelConsumptions'), {
+        modelName,
+        materialId,
+        consumptionPerPair,
+        size: size || null,
+        createdAt: Date.now()
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'modelConsumptions');
+    }
+  },
+
+  async deleteModelConsumption(id: string): Promise<void> {
+    if (!db) return;
+    try {
+      const batch = writeBatch(db);
+      batch.delete(doc(db, 'modelConsumptions', id));
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'modelConsumptions');
     }
   }
 };

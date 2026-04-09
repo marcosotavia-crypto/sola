@@ -27,14 +27,17 @@ import {
   Users,
   CalendarDays,
   ListPlus,
-  ArrowRight
+  ArrowRight,
+  Scale,
+  Droplets,
+  Database
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import BarcodeComponent from 'react-barcode';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { FootwearItem, Operator, Programming } from './types';
+import { FootwearItem, Operator, Programming, Material, ModelConsumption } from './types';
 import { productionService } from './services/productionService';
 import { db } from './lib/firebase';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
@@ -49,6 +52,8 @@ function AppContent() {
   const [items, setItems] = useState<FootwearItem[]>([]);
   const [operators, setOperators] = useState<Operator[]>([]);
   const [programmings, setProgrammings] = useState<Programming[]>([]);
+  const [materials, setMaterials] = useState<Material[]>([]);
+  const [modelConsumptions, setModelConsumptions] = useState<ModelConsumption[]>([]);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItem, setSelectedItem] = useState<FootwearItem | null>(null);
@@ -76,11 +81,28 @@ function AppContent() {
   const [progDesc, setProgDesc] = useState('');
   const [selectedOrdersForProg, setSelectedOrdersForProg] = useState<string[]>([]);
   
+  // Material form states
+  const [newMaterialName, setNewMaterialName] = useState('');
+  const [newMaterialUnit, setNewMaterialUnit] = useState('kg');
+  const [newConsModelName, setNewConsModelName] = useState('');
+  const [newConsMaterialId, setNewConsMaterialId] = useState('');
+  const [newConsSize, setNewConsSize] = useState('');
+  const [newConsRate, setNewConsRate] = useState(0);
+  
   // Scanner state
   const [scanInput, setScanInput] = useState('');
   const [operatorName, setOperatorName] = useState('');
   const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
   const [progToDelete, setProgToDelete] = useState<string | null>(null);
+  const [selectedProgForPrint, setSelectedProgForPrint] = useState<Programming | null>(null);
+
+  useEffect(() => {
+    const handleAfterPrint = () => {
+      setSelectedProgForPrint(null);
+    };
+    window.addEventListener('afterprint', handleAfterPrint);
+    return () => window.removeEventListener('afterprint', handleAfterPrint);
+  }, []);
 
   useEffect(() => {
     if (!db) return;
@@ -119,10 +141,34 @@ function AppContent() {
       console.error("Programmings Error:", error);
     });
 
+    const qMats = query(collection(db, 'materials'), orderBy('createdAt', 'desc'));
+    const unsubscribeMats = onSnapshot(qMats, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Material));
+      setMaterials(data);
+    }, (error) => {
+      console.error("Materials Error:", error);
+    });
+
+    const qCons = query(collection(db, 'modelConsumptions'), orderBy('createdAt', 'desc'));
+    const unsubscribeCons = onSnapshot(qCons, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as ModelConsumption));
+      setModelConsumptions(data);
+    }, (error) => {
+      console.error("Consumptions Error:", error);
+    });
+
     return () => {
       unsubscribe();
       unsubscribeOps();
       unsubscribeProgs();
+      unsubscribeMats();
+      unsubscribeCons();
     };
   }, []);
 
@@ -264,12 +310,137 @@ function AppContent() {
     }
   };
 
+  const handleAddMaterial = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!newMaterialName.trim()) return;
+    try {
+      await productionService.addMaterial(newMaterialName.trim().toUpperCase(), newMaterialUnit);
+      setNewMaterialName('');
+      toast.success('Material cadastrado!');
+    } catch (error) {
+      toast.error('Erro ao cadastrar material');
+    }
+  };
+
+  const handleDeleteMaterial = async (id: string) => {
+    try {
+      await productionService.deleteMaterial(id);
+      toast.success('Material excluído');
+    } catch (error) {
+      toast.error('Erro ao excluir material');
+    }
+  };
+
+  const handleAddModelConsumption = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!newConsModelName.trim() || !newConsMaterialId || newConsRate <= 0) {
+      toast.error('Preencha todos os campos corretamente');
+      return;
+    }
+    try {
+      await productionService.addModelConsumption(
+        newConsModelName.trim().toUpperCase(),
+        newConsMaterialId,
+        newConsRate,
+        newConsSize.trim() || undefined
+      );
+      setNewConsModelName('');
+      setNewConsSize('');
+      setNewConsRate(0);
+      toast.success('Consumo cadastrado!');
+    } catch (error) {
+      toast.error('Erro ao cadastrar consumo');
+    }
+  };
+
+  const handleDeleteModelConsumption = async (id: string) => {
+    try {
+      await productionService.deleteModelConsumption(id);
+      toast.success('Consumo excluído');
+    } catch (error) {
+      toast.error('Erro ao excluir consumo');
+    }
+  };
+
   const toggleOrderSelection = (orderNum: string) => {
     setSelectedOrdersForProg(prev => 
       prev.includes(orderNum) 
         ? prev.filter(o => o !== orderNum) 
         : [...prev, orderNum]
     );
+  };
+
+  const calculateOrderMaterials = (orderItems: FootwearItem[]) => {
+    if (!orderItems.length) return [];
+    const modelName = orderItems[0].model.toUpperCase();
+    
+    const materialTotals: Record<string, { total: number, unit: string, materialName: string }> = {};
+
+    orderItems.forEach(item => {
+      let cons = modelConsumptions.find(c => 
+        c.modelName.toUpperCase() === modelName && 
+        c.size === item.size
+      );
+      
+      if (!cons) {
+        cons = modelConsumptions.find(c => 
+          c.modelName.toUpperCase() === modelName && 
+          (!c.size || c.size === "")
+        );
+      }
+
+      if (cons) {
+        const mat = materials.find(m => m.id === cons.materialId);
+        if (mat) {
+          if (!materialTotals[mat.id]) {
+            materialTotals[mat.id] = { total: 0, unit: mat.unit, materialName: mat.name };
+          }
+          materialTotals[mat.id].total += item.quantity * cons.consumptionPerPair;
+        }
+      }
+    });
+
+    return Object.values(materialTotals);
+  };
+
+  const calculateOrderMaterial = (orderItems: FootwearItem[]) => {
+    const results = calculateOrderMaterials(orderItems);
+    return results.length > 0 ? results[0] : null;
+  };
+
+  const calculateProgrammingMaterial = (prog: Programming) => {
+    const progItems = items.filter(i => i.programmingId === prog.id);
+    if (!progItems.length) return [];
+    
+    const consumptions: Record<string, { total: number, unit: string, materialName: string }> = {};
+    
+    progItems.forEach(item => {
+      const modelName = item.model.toUpperCase();
+      let cons = modelConsumptions.find(c => 
+        c.modelName.toUpperCase() === modelName && 
+        c.size === item.size
+      );
+      
+      if (!cons) {
+        cons = modelConsumptions.find(c => 
+          c.modelName.toUpperCase() === modelName && 
+          (!c.size || c.size === "")
+        );
+      }
+
+      if (cons) {
+        const mat = materials.find(m => m.id === cons.materialId);
+        if (mat) {
+          const key = mat.id;
+          if (!consumptions[key]) {
+            consumptions[key] = { total: 0, unit: mat.unit, materialName: mat.name };
+          }
+          consumptions[key].total += item.quantity * cons.consumptionPerPair;
+        }
+      }
+    });
+    
+    return Object.values(consumptions);
   };
 
   const updateSizeQuantity = (size: string, qty: number) => {
@@ -351,6 +522,13 @@ function AppContent() {
           >
             <Users size={20} />
             <span className="font-medium hidden md:block">Operadores</span>
+          </button>
+          <button 
+            onClick={() => setActiveTab('materials')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${activeTab === 'materials' ? 'bg-brand-accent/10 text-brand-accent border border-brand-accent/20' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'}`}
+          >
+            <Scale size={20} />
+            <span className="font-medium hidden md:block">Materiais</span>
           </button>
         </nav>
 
@@ -480,6 +658,14 @@ function AppContent() {
                                   Limite: {new Date(orderItems[0].deadline).toLocaleDateString('pt-BR')}
                                 </p>
                               </div>
+                              {calculateOrderMaterial(orderItems) && (
+                                <div className="mt-2 flex items-center gap-2 bg-brand-accent/5 border border-brand-accent/10 px-2 py-1 rounded w-fit">
+                                  <Scale size={12} className="text-brand-accent" />
+                                  <span className="text-[10px] font-bold text-gray-700">
+                                    Consumo: <span className="text-brand-accent">{calculateOrderMaterial(orderItems)?.total.toFixed(2)} {calculateOrderMaterial(orderItems)?.unit}</span> de {calculateOrderMaterial(orderItems)?.materialName}
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           </div>
                           
@@ -819,13 +1005,29 @@ function AppContent() {
                                   {items.filter(i => i.programmingId === prog.id && i.status === 'Produzido').reduce((acc, i) => acc + (i.quantity || 0), 0)}
                                 </p>
                               </div>
+                              {calculateProgrammingMaterial(prog).map((cons, i) => (
+                                <div key={i} className="text-center border-l border-brand-border pl-4">
+                                  <p className="text-[9px] uppercase text-gray-500 font-bold">Total {cons.materialName}</p>
+                                  <p className="text-sm font-mono font-bold text-blue-600">
+                                    {cons.total.toFixed(2)} {cons.unit}
+                                  </p>
+                                </div>
+                              ))}
                             </div>
-                            <Button variant="outline" size="sm" className="border-brand-border hover:bg-gray-100 text-gray-900" onClick={() => {
-                              setSearchQuery(prog.orderNumbers[0]); // Quick filter trick
-                              setActiveTab('dashboard');
-                            }}>
-                              Ver Detalhes <ArrowRight size={14} className="ml-2" />
-                            </Button>
+                            <div className="flex gap-2">
+                              <Button variant="outline" size="sm" className="border-brand-border hover:bg-gray-100 text-gray-900" onClick={() => {
+                                setSelectedProgForPrint(prog);
+                                setTimeout(() => window.print(), 100);
+                              }}>
+                                <Printer size={14} className="mr-2" /> Imprimir Lote
+                              </Button>
+                              <Button variant="outline" size="sm" className="border-brand-border hover:bg-gray-100 text-gray-900" onClick={() => {
+                                setSearchQuery(prog.orderNumbers[0]); // Quick filter trick
+                                setActiveTab('dashboard');
+                              }}>
+                                Ver Detalhes <ArrowRight size={14} className="ml-2" />
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       </Card>
@@ -990,6 +1192,166 @@ function AppContent() {
                 </Card>
               </motion.div>
             </TabsContent>
+            <TabsContent value="materials" key="materials">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="space-y-8"
+              >
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  {/* Materials Management */}
+                  <Card className="bg-brand-card border-brand-border">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Droplets className="text-brand-accent" size={20} />
+                        Cadastro de Materiais
+                      </CardTitle>
+                      <CardDescription>Gerencie os tipos de materiais utilizados.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <form onSubmit={handleAddMaterial} className="flex gap-2 mb-6">
+                        <Input 
+                          placeholder="Nome do Material (Ex: PVC, Borracha)" 
+                          className="bg-gray-50 border-brand-border text-gray-900"
+                          value={newMaterialName}
+                          onChange={e => setNewMaterialName(e.target.value)}
+                        />
+                        <Select value={newMaterialUnit} onValueChange={setNewMaterialUnit}>
+                          <SelectTrigger className="w-24 bg-gray-50 border-brand-border text-gray-900">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="bg-brand-card border-brand-border text-gray-900">
+                            <SelectItem value="kg">kg</SelectItem>
+                            <SelectItem value="g">g</SelectItem>
+                            <SelectItem value="un">un</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button type="submit" className="bg-brand-accent text-white hover:bg-brand-accent/90">
+                          <Plus size={18} />
+                        </Button>
+                      </form>
+
+                      <div className="space-y-2">
+                        {materials.map(mat => (
+                          <div key={mat.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-brand-border">
+                            <div className="flex items-center gap-3">
+                              <Database size={16} className="text-brand-accent" />
+                              <span className="font-bold text-sm text-gray-900">{mat.name}</span>
+                              <Badge variant="outline" className="text-[10px]">{mat.unit}</Badge>
+                            </div>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-8 w-8 text-gray-400 hover:text-red-500"
+                              onClick={() => handleDeleteMaterial(mat.id)}
+                            >
+                              <Trash2 size={14} />
+                            </Button>
+                          </div>
+                        ))}
+                        {materials.length === 0 && (
+                          <p className="text-center py-8 text-gray-500 text-xs italic">Nenhum material cadastrado.</p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Model Consumption Management */}
+                  <Card className="bg-brand-card border-brand-border">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Scale className="text-brand-accent" size={20} />
+                        Consumo por Modelo
+                      </CardTitle>
+                      <CardDescription>Defina quanto cada modelo gasta de material.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <form onSubmit={handleAddModelConsumption} className="space-y-4 mb-6">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-[10px] uppercase font-bold text-gray-500">Modelo</Label>
+                            <Input 
+                              placeholder="Nome do Modelo" 
+                              className="bg-gray-50 border-brand-border text-gray-900"
+                              value={newConsModelName}
+                              onChange={e => setNewConsModelName(e.target.value)}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] uppercase font-bold text-gray-500">Número (Opcional)</Label>
+                            <Input 
+                              placeholder="Ex: 35" 
+                              className="bg-gray-50 border-brand-border text-gray-900 font-mono"
+                              value={newConsSize}
+                              onChange={e => setNewConsSize(e.target.value)}
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-[10px] uppercase font-bold text-gray-500">Material</Label>
+                            <Select value={newConsMaterialId} onValueChange={setNewConsMaterialId}>
+                              <SelectTrigger className="bg-gray-50 border-brand-border text-gray-900">
+                                <SelectValue placeholder="Selecione" />
+                              </SelectTrigger>
+                              <SelectContent className="bg-brand-card border-brand-border text-gray-900">
+                                {materials.map(m => (
+                                  <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] uppercase font-bold text-gray-500">Consumo por Par (kg)</Label>
+                            <Input 
+                              type="number" 
+                              step="0.001"
+                              placeholder="Ex: 0.250" 
+                              className="bg-gray-50 border-brand-border text-gray-900"
+                              value={newConsRate || ''}
+                              onChange={e => setNewConsRate(parseFloat(e.target.value) || 0)}
+                            />
+                          </div>
+                        </div>
+                        <Button type="submit" className="w-full bg-brand-accent text-white hover:bg-brand-accent/90">
+                          SALVAR CONSUMO
+                        </Button>
+                      </form>
+
+                      <div className="space-y-2">
+                        {modelConsumptions.map(cons => {
+                          const mat = materials.find(m => m.id === cons.materialId);
+                          return (
+                            <div key={cons.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-brand-border">
+                              <div>
+                                <p className="font-bold text-sm text-gray-900">
+                                  {cons.modelName} {cons.size && <span className="text-brand-accent ml-1">#{cons.size}</span>}
+                                </p>
+                                <p className="text-[10px] text-gray-500">
+                                  {mat?.name}: <span className="font-mono font-bold text-brand-accent">{cons.consumptionPerPair.toFixed(3)} {mat?.unit || 'kg'}</span> / par
+                                </p>
+                              </div>
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-8 w-8 text-gray-400 hover:text-red-500"
+                                onClick={() => handleDeleteModelConsumption(cons.id)}
+                              >
+                                <Trash2 size={14} />
+                              </Button>
+                            </div>
+                          );
+                        })}
+                        {modelConsumptions.length === 0 && (
+                          <p className="text-center py-8 text-gray-500 text-xs italic">Nenhum consumo cadastrado.</p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </motion.div>
+            </TabsContent>
           </AnimatePresence>
         </Tabs>
 
@@ -1045,6 +1407,101 @@ function AppContent() {
                     <div className="w-full border-t-[8px] border-white my-2"></div>
                     <h2 className="text-[110px] font-black font-mono leading-none">{selectedItem.quantity}</h2>
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {selectedProgForPrint && (
+            <div className="p-8 bg-white text-black min-h-screen">
+              <div className="border-b-4 border-black pb-4 mb-8 flex justify-between items-end">
+                <div>
+                  <h1 className="text-4xl font-black uppercase tracking-tighter">Relatório de Produção</h1>
+                  <p className="text-xl font-bold text-gray-600 uppercase">{selectedProgForPrint.name}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-bold text-gray-400 uppercase">Data de Emissão</p>
+                  <p className="text-lg font-mono font-bold">{new Date().toLocaleDateString('pt-BR')}</p>
+                </div>
+              </div>
+
+              {selectedProgForPrint.orderNumbers.map(orderNum => {
+                const orderItems = items.filter(i => i.orderNumber === orderNum);
+                if (orderItems.length === 0) return null;
+                
+                const firstItem = orderItems[0];
+                const materialConsList = calculateOrderMaterials(orderItems);
+                
+                // Group by size
+                const sizeSummary = orderItems.reduce((acc, item) => {
+                  acc[item.size] = (acc[item.size] || 0) + item.quantity;
+                  return acc;
+                }, {} as Record<string, number>);
+
+                return (
+                  <div key={orderNum} className="mb-10 border-2 border-black p-6 rounded-sm break-inside-avoid">
+                    <div className="flex justify-between items-start mb-6">
+                      <div>
+                        <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Pedido</p>
+                        <h2 className="text-3xl font-black font-mono">#{orderNum}</h2>
+                      </div>
+                      <div className="text-right">
+                        <h3 className="text-2xl font-black uppercase tracking-tight">{firstItem.model}</h3>
+                        <p className="text-lg font-bold text-gray-600 uppercase">{firstItem.color}</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-4 mb-6">
+                      <div className="bg-gray-100 p-3 rounded">
+                        <p className="text-[10px] font-bold text-gray-500 uppercase">Total de Pares</p>
+                        <p className="text-xl font-black font-mono">{orderItems.reduce((acc, i) => acc + i.quantity, 0)}</p>
+                      </div>
+                      <div className="col-span-3 grid grid-cols-2 gap-2">
+                        {materialConsList.map((cons, i) => (
+                          <div key={i} className="bg-brand-accent/5 p-3 rounded border border-brand-accent/20">
+                            <p className="text-[10px] font-bold text-brand-accent uppercase">Consumo ({cons.materialName})</p>
+                            <p className="text-xl font-black font-mono text-brand-accent">
+                              {cons.total.toFixed(3)} {cons.unit}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-[10px] font-bold text-gray-500 uppercase mb-2 tracking-widest">Distribuição por Grade</p>
+                      <div className="flex flex-wrap gap-2">
+                        {Object.entries(sizeSummary).sort((a, b) => a[0].localeCompare(b[0])).map(([size, qty]) => (
+                          <div key={size} className="border-2 border-black px-4 py-2 text-center min-w-[60px]">
+                            <p className="text-[10px] font-black text-gray-400 uppercase">Tam</p>
+                            <p className="text-lg font-black font-mono">{size}</p>
+                            <div className="border-t border-black my-1"></div>
+                            <p className="text-lg font-black font-mono">{qty}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              <div className="mt-12 pt-8 border-t-2 border-dashed border-gray-300 flex justify-between items-start">
+                <div>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase mb-4">Resumo da Programação</p>
+                  <div className="flex gap-8">
+                    {calculateProgrammingMaterial(selectedProgForPrint).map((cons, i) => (
+                      <div key={i}>
+                        <p className="text-xs font-bold text-gray-600 uppercase">{cons.materialName}</p>
+                        <p className="text-2xl font-black font-mono">{cons.total.toFixed(2)} {cons.unit}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Total Geral de Pares</p>
+                  <p className="text-4xl font-black font-mono">
+                    {items.filter(i => i.programmingId === selectedProgForPrint.id).reduce((acc, i) => acc + i.quantity, 0)}
+                  </p>
                 </div>
               </div>
             </div>

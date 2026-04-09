@@ -6,6 +6,22 @@ export interface Operator {
   createdAt: number;
 }
 
+export interface Material {
+  id: string;
+  name: string;
+  unit: string;
+  createdAt: number;
+}
+
+export interface ModelConsumption {
+  id: string;
+  modelName: string;
+  materialId: string;
+  size?: string; // Optional: if empty, applies to all sizes or acts as default
+  consumptionPerPair: number; // kg per pair
+  createdAt: number;
+}
+
 export interface FootwearItem {
   id: string;
   orderNumber: string;

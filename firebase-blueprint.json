@@ -56,6 +56,32 @@
         "updatedAt": { "type": "number" }
       },
       "required": ["name", "orderNumbers", "status", "createdAt", "updatedAt"]
+    },
+    "Material": {
+      "title": "Material",
+      "description": "Raw material used in production",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "unit": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["name", "unit", "createdAt"]
+    },
+    "ModelConsumption": {
+      "title": "Model Consumption",
+      "description": "Consumption rate of a material for a specific model",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "modelName": { "type": "string" },
+        "materialId": { "type": "string" },
+        "size": { "type": "string" },
+        "consumptionPerPair": { "type": "number" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["modelName", "materialId", "consumptionPerPair", "createdAt"]
     }
   },
   "firestore": {
@@ -70,6 +96,14 @@
     "/programmings/{programmingId}": {
       "schema": "Programming",
       "description": "Collection of production programmings"
+    },
+    "/materials/{materialId}": {
+      "schema": "Material",
+      "description": "Collection of raw materials"
+    },
+    "/modelConsumptions/{consumptionId}": {
+      "schema": "ModelConsumption",
+      "description": "Collection of model consumption rates"
     }
   }
 }
