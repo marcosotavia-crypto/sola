@@ -306,48 +306,48 @@ function AppContent() {
   };
 
   return (
-    <div className="min-h-screen bg-brand-bg font-sans text-gray-200">
+    <div className="min-h-screen bg-brand-bg font-sans text-gray-900">
       {/* Sidebar Navigation */}
       <aside className="fixed left-0 top-0 bottom-0 w-20 md:w-64 bg-brand-card border-r border-brand-border z-20 print:hidden">
         <div className="p-6 flex items-center gap-3 mb-8">
-          <div className="bg-brand-accent text-black p-2 rounded-lg shadow-[0_0_15px_rgba(16,185,129,0.3)]">
+          <div className="bg-brand-accent text-white p-2 rounded-lg shadow-[0_0_15px_rgba(16,185,129,0.2)]">
             <Package size={24} />
           </div>
-          <h1 className="text-xl font-bold tracking-tighter hidden md:block">FOOTWEAR<span className="text-brand-accent">PRO</span></h1>
+          <h1 className="text-xl font-bold tracking-tighter hidden md:block text-gray-900">FOOTWEAR<span className="text-brand-accent">PRO</span></h1>
         </div>
 
         <nav className="px-3 space-y-2">
           <button 
             onClick={() => setActiveTab('dashboard')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${activeTab === 'dashboard' ? 'bg-brand-accent/10 text-brand-accent border border-brand-accent/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${activeTab === 'dashboard' ? 'bg-brand-accent/10 text-brand-accent border border-brand-accent/20' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'}`}
           >
             <LayoutDashboard size={20} />
             <span className="font-medium hidden md:block">Dashboard</span>
           </button>
           <button 
             onClick={() => setActiveTab('new-order')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${activeTab === 'new-order' ? 'bg-brand-accent/10 text-brand-accent border border-brand-accent/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${activeTab === 'new-order' ? 'bg-brand-accent/10 text-brand-accent border border-brand-accent/20' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'}`}
           >
             <Plus size={20} />
             <span className="font-medium hidden md:block">Novo Pedido</span>
           </button>
           <button 
             onClick={() => setActiveTab('programmings')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${activeTab === 'programmings' ? 'bg-brand-accent/10 text-brand-accent border border-brand-accent/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${activeTab === 'programmings' ? 'bg-brand-accent/10 text-brand-accent border border-brand-accent/20' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'}`}
           >
             <CalendarDays size={20} />
             <span className="font-medium hidden md:block">Programação</span>
           </button>
           <button 
             onClick={() => setActiveTab('scanner')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${activeTab === 'scanner' ? 'bg-brand-accent/10 text-brand-accent border border-brand-accent/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${activeTab === 'scanner' ? 'bg-brand-accent/10 text-brand-accent border border-brand-accent/20' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'}`}
           >
             <Barcode size={20} />
             <span className="font-medium hidden md:block">Bipar Produção</span>
           </button>
           <button 
             onClick={() => setActiveTab('operators')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${activeTab === 'operators' ? 'bg-brand-accent/10 text-brand-accent border border-brand-accent/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${activeTab === 'operators' ? 'bg-brand-accent/10 text-brand-accent border border-brand-accent/20' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'}`}
           >
             <Users size={20} />
             <span className="font-medium hidden md:block">Operadores</span>
@@ -355,7 +355,7 @@ function AppContent() {
         </nav>
 
         <div className="absolute bottom-8 left-0 right-0 px-3">
-          <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-500 hover:text-white hover:bg-white/5 transition-all">
+          <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-all">
             <Settings size={20} />
             <span className="font-medium hidden md:block">Configurações</span>
           </button>
@@ -459,7 +459,7 @@ function AppContent() {
                       transition={{ delay: idx * 0.05 }}
                     >
                       <Card className="bg-brand-card border-brand-border overflow-hidden group">
-                        <div className="bg-white/5 border-b border-brand-border px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div className="bg-gray-50 border-b border-brand-border px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                           <div className="flex items-center gap-4">
                             <div className="h-10 w-10 rounded bg-brand-accent/10 flex items-center justify-center text-brand-accent border border-brand-accent/20">
                               <Package size={20} />
@@ -467,7 +467,7 @@ function AppContent() {
                             <div>
                               <div className="flex items-center gap-2">
                                 <span className="text-[10px] font-mono font-bold text-brand-accent uppercase tracking-widest">Lote Ativo</span>
-                                <h3 className="text-lg font-bold font-mono">#{orderNum}</h3>
+                                <h3 className="text-lg font-bold font-mono text-gray-900">#{orderNum}</h3>
                               </div>
                               <p className="text-xs text-gray-500 font-medium">{orderItems[0].model} • {orderItems[0].color}</p>
                               <div className="flex gap-4 mt-1">
@@ -498,7 +498,7 @@ function AppContent() {
                             </div>
                             
                             <div className="flex gap-2">
-                              <Button variant="outline" size="sm" className="h-8 bg-transparent border-brand-border hover:bg-white/5" onClick={() => handlePrintAll(orderItems)}>
+                              <Button variant="outline" size="sm" className="h-8 bg-transparent border-brand-border hover:bg-gray-100" onClick={() => handlePrintAll(orderItems)}>
                                 <Printer size={14} className="mr-2" /> Etiquetas
                               </Button>
                               <Button variant="ghost" size="sm" className="h-8 text-red-500 hover:text-red-400 hover:bg-red-500/10" onClick={() => setOrderToDelete(orderNum)}>
@@ -523,11 +523,11 @@ function AppContent() {
                             </TableHeader>
                             <TableBody>
                               {orderItems.sort((a,b) => a.size.localeCompare(b.size)).map((item) => (
-                                <TableRow key={item.id} className="border-brand-border hover:bg-white/[0.02] transition-colors group/row">
+                                <TableRow key={item.id} className="border-brand-border hover:bg-gray-50 transition-colors group/row">
                                   <TableCell className="font-mono font-bold text-brand-accent">{item.size}</TableCell>
-                                  <TableCell className="font-mono text-sm">{(item.quantity || 0)} <span className="text-[10px] text-gray-500">PARES</span></TableCell>
+                                  <TableCell className="font-mono text-sm text-gray-900">{(item.quantity || 0)} <span className="text-[10px] text-gray-500">PARES</span></TableCell>
                                   <TableCell>
-                                    <code className="font-mono text-[10px] bg-white/5 px-2 py-1 rounded border border-white/5">{item.barcode}</code>
+                                    <code className="font-mono text-[10px] bg-gray-100 px-2 py-1 rounded border border-brand-border text-gray-900">{item.barcode}</code>
                                   </TableCell>
                                   <TableCell>
                                     <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
@@ -565,7 +565,7 @@ function AppContent() {
                                       <Button 
                                         variant="ghost" 
                                         size="icon" 
-                                        className="h-7 w-7 rounded text-gray-400 hover:text-white hover:bg-white/10"
+                                        className="h-7 w-7 rounded text-gray-400 hover:text-gray-900 hover:bg-gray-100"
                                         onClick={() => setSelectedItem(item)}
                                       >
                                         <Maximize2 size={14} />
@@ -646,12 +646,12 @@ function AppContent() {
                         <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-3">
                           {sizeQuantities.map((sq) => (
                             <div key={sq.size} className="relative group">
-                              <div className="absolute -top-2 -left-1 px-1.5 py-0.5 bg-brand-accent text-black text-[9px] font-bold rounded z-10">
+                              <div className="absolute -top-2 -left-1 px-1.5 py-0.5 bg-brand-accent text-white text-[9px] font-bold rounded z-10">
                                 {sq.size}
                               </div>
                               <Input 
                                 type="number" 
-                                className="h-14 text-center font-mono font-bold bg-brand-bg border-brand-border focus-visible:ring-brand-accent pt-4" 
+                                className="h-14 text-center font-mono font-bold bg-gray-50 border-brand-border focus-visible:ring-brand-accent pt-4 text-gray-900" 
                                 value={sq.quantity || ''} 
                                 onChange={(e) => updateSizeQuantity(sq.size, parseInt(e.target.value) || 0)}
                               />
@@ -660,7 +660,7 @@ function AppContent() {
                           <Button 
                             type="button" 
                             variant="outline" 
-                            className="h-14 border-dashed border-brand-border bg-transparent hover:bg-white/5 hover:border-brand-accent group"
+                            className="h-14 border-dashed border-brand-border bg-transparent hover:bg-gray-100 hover:border-brand-accent group"
                             onClick={() => {
                               const nextSize = (parseInt(sizeQuantities[sizeQuantities.length - 1].size) + 1).toString();
                               setSizeQuantities([...sizeQuantities, { size: nextSize, quantity: 0 }]);
@@ -672,8 +672,8 @@ function AppContent() {
                       </div>
 
                       <div className="flex justify-end gap-3 pt-6 border-t border-brand-border">
-                        <Button type="button" variant="ghost" className="hover:bg-white/5" onClick={() => setActiveTab('dashboard')}>Cancelar</Button>
-                        <Button type="submit" className="bg-brand-accent text-black hover:bg-brand-accent/90 px-10">CRIAR LOTE</Button>
+                        <Button type="button" variant="ghost" className="hover:bg-gray-100" onClick={() => setActiveTab('dashboard')}>Cancelar</Button>
+                        <Button type="submit" className="bg-brand-accent text-white hover:bg-brand-accent/90 px-10">CRIAR LOTE</Button>
                       </div>
                     </form>
                   </CardContent>
@@ -704,7 +704,7 @@ function AppContent() {
                           <Label className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Nome da Programação</Label>
                           <Input 
                             placeholder="Ex: Semana 15 - Setor A" 
-                            className="bg-brand-bg border-brand-border"
+                            className="bg-gray-50 border-brand-border text-gray-900"
                             value={progName}
                             onChange={e => setProgName(e.target.value)}
                           />
@@ -713,7 +713,7 @@ function AppContent() {
                           <Label className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Descrição (Opcional)</Label>
                           <Input 
                             placeholder="Notas adicionais..." 
-                            className="bg-brand-bg border-brand-border"
+                            className="bg-gray-50 border-brand-border text-gray-900"
                             value={progDesc}
                             onChange={e => setProgDesc(e.target.value)}
                           />
@@ -733,7 +733,7 @@ function AppContent() {
                                   className={`flex items-center space-x-3 p-2 rounded border transition-colors ${
                                     selectedOrdersForProg.includes(orderNum) 
                                       ? 'bg-brand-accent/10 border-brand-accent/30' 
-                                      : 'bg-brand-bg/50 border-brand-border'
+                                      : 'bg-gray-50 border-brand-border'
                                   } ${isAlreadyInProg ? 'opacity-50' : ''}`}
                                 >
                                   <Checkbox 
@@ -744,9 +744,9 @@ function AppContent() {
                                   />
                                   <label 
                                     htmlFor={`order-${orderNum}`}
-                                    className="flex-1 text-xs font-mono cursor-pointer"
+                                    className="flex-1 text-xs font-mono cursor-pointer text-gray-900"
                                   >
-                                    #{orderNum} {isAlreadyInProg && <span className="text-[9px] text-amber-500 ml-1">(Já Programado)</span>}
+                                    #{orderNum} {isAlreadyInProg && <span className="text-[9px] text-amber-600 ml-1">(Já Programado)</span>}
                                   </label>
                                 </div>
                               );
@@ -754,7 +754,7 @@ function AppContent() {
                           </div>
                         </div>
 
-                        <Button type="submit" className="w-full bg-brand-accent text-black hover:bg-brand-accent/90">
+                        <Button type="submit" className="w-full bg-brand-accent text-white hover:bg-brand-accent/90">
                           GERAR PROGRAMAÇÃO
                         </Button>
                       </form>
@@ -776,7 +776,7 @@ function AppContent() {
                           <div className="flex justify-between items-start mb-4">
                             <div>
                               <div className="flex items-center gap-3 mb-1">
-                                <h4 className="text-lg font-bold">{prog.name}</h4>
+                                <h4 className="text-lg font-bold text-gray-900">{prog.name}</h4>
                                 <Badge variant="outline" className="bg-brand-accent/10 text-brand-accent border-brand-accent/20 text-[10px]">
                                   {prog.status}
                                 </Badge>
@@ -797,9 +797,9 @@ function AppContent() {
                             <p className="text-[10px] uppercase font-bold text-gray-500 tracking-widest">Pedidos Incluídos</p>
                             <div className="flex flex-wrap gap-2">
                               {prog.orderNumbers.map(orderNum => (
-                                <div key={orderNum} className="flex items-center gap-2 bg-brand-bg border border-brand-border px-3 py-1.5 rounded-md">
+                                <div key={orderNum} className="flex items-center gap-2 bg-gray-50 border border-brand-border px-3 py-1.5 rounded-md">
                                   <Package size={12} className="text-brand-accent" />
-                                  <span className="text-xs font-mono font-bold">#{orderNum}</span>
+                                  <span className="text-xs font-mono font-bold text-gray-900">#{orderNum}</span>
                                 </div>
                               ))}
                             </div>
@@ -809,7 +809,7 @@ function AppContent() {
                             <div className="flex gap-4">
                               <div className="text-center">
                                 <p className="text-[9px] uppercase text-gray-500 font-bold">Total Pares</p>
-                                <p className="text-sm font-mono font-bold">
+                                <p className="text-sm font-mono font-bold text-gray-900">
                                   {items.filter(i => i.programmingId === prog.id).reduce((acc, i) => acc + (i.quantity || 0), 0)}
                                 </p>
                               </div>
@@ -820,7 +820,7 @@ function AppContent() {
                                 </p>
                               </div>
                             </div>
-                            <Button variant="outline" size="sm" className="border-brand-border hover:bg-white/5" onClick={() => {
+                            <Button variant="outline" size="sm" className="border-brand-border hover:bg-gray-100 text-gray-900" onClick={() => {
                               setSearchQuery(prog.orderNumbers[0]); // Quick filter trick
                               setActiveTab('dashboard');
                             }}>
@@ -856,12 +856,12 @@ function AppContent() {
                       <div className="space-y-2">
                         <Label htmlFor="operator" className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Operador Responsável</Label>
                         <Select value={operatorName} onValueChange={setOperatorName}>
-                          <SelectTrigger className="bg-brand-bg border-brand-border font-mono h-12">
+                          <SelectTrigger className="bg-gray-50 border-brand-border font-mono h-12 text-gray-900">
                             <SelectValue placeholder="SELECIONE O OPERADOR" />
                           </SelectTrigger>
-                          <SelectContent className="bg-brand-card border-brand-border text-gray-200">
+                          <SelectContent className="bg-brand-card border-brand-border text-gray-900">
                             {operators.map(op => (
-                              <SelectItem key={op.id} value={op.name} className="focus:bg-brand-accent focus:text-black">
+                              <SelectItem key={op.id} value={op.name} className="focus:bg-brand-accent focus:text-white">
                                 {op.name}
                               </SelectItem>
                             ))}
@@ -873,14 +873,14 @@ function AppContent() {
                         <Input 
                           autoFocus
                           placeholder="SCAN BARCODE" 
-                          className="bg-brand-bg border-brand-border text-brand-accent text-center text-3xl py-12 font-mono tracking-[0.2em] focus-visible:ring-brand-accent/50 placeholder:text-gray-800"
+                          className="bg-gray-50 border-brand-border text-brand-accent text-center text-3xl py-12 font-mono tracking-[0.2em] focus-visible:ring-brand-accent/50 placeholder:text-gray-300"
                           value={scanInput}
                           onChange={e => setScanInput(e.target.value)}
                         />
                         <div className="absolute inset-y-0 left-0 w-1 bg-brand-accent/50" />
                         <div className="absolute inset-y-0 right-0 w-1 bg-brand-accent/50" />
                       </div>
-                      <Button type="submit" className="w-full bg-white/5 hover:bg-white/10 text-gray-400 py-6 font-mono text-xs tracking-widest uppercase border border-white/5">
+                      <Button type="submit" className="w-full bg-gray-100 hover:bg-gray-200 text-gray-500 py-6 font-mono text-xs tracking-widest uppercase border border-brand-border">
                         Confirmar Entrada Manual
                       </Button>
                     </form>
@@ -904,7 +904,7 @@ function AppContent() {
                                 <CheckCircle2 size={16} />
                               </div>
                               <div>
-                                <p className="font-bold text-sm font-mono tracking-tight">{item.orderNumber} <span className="text-gray-600 mx-1">/</span> {item.model}</p>
+                                <p className="font-bold text-sm font-mono tracking-tight text-gray-900">{item.orderNumber} <span className="text-gray-400 mx-1">/</span> {item.model}</p>
                                 <p className="text-[10px] text-gray-500 font-mono uppercase">TAM: {item.size} • {item.barcode}</p>
                                 <p className="text-[9px] text-brand-accent font-mono uppercase mt-1">OPERADOR: {item.producedBy}</p>
                               </div>
@@ -949,11 +949,11 @@ function AppContent() {
                     <form onSubmit={handleAddOperator} className="flex gap-3">
                       <Input 
                         placeholder="NOME COMPLETO" 
-                        className="bg-brand-bg border-brand-border font-mono"
+                        className="bg-gray-50 border-brand-border font-mono text-gray-900"
                         value={newOperatorName}
                         onChange={e => setNewOperatorName(e.target.value)}
                       />
-                      <Button type="submit" className="bg-brand-accent text-black hover:bg-brand-accent/90 px-8">
+                      <Button type="submit" className="bg-brand-accent text-white hover:bg-brand-accent/90 px-8">
                         ADICIONAR
                       </Button>
                     </form>
@@ -962,17 +962,17 @@ function AppContent() {
                       <h4 className="text-[10px] uppercase tracking-widest text-gray-500 font-bold">Operadores Ativos</h4>
                       <div className="grid grid-cols-1 gap-2">
                         {operators.map(op => (
-                          <div key={op.id} className="flex justify-between items-center p-4 bg-brand-bg/50 rounded-lg border border-brand-border group">
+                          <div key={op.id} className="flex justify-between items-center p-4 bg-gray-50 rounded-lg border border-brand-border group">
                             <div className="flex items-center gap-3">
                               <div className="h-8 w-8 rounded-full bg-brand-accent/10 flex items-center justify-center text-brand-accent font-bold text-xs">
                                 {op.name.charAt(0)}
                               </div>
-                              <span className="font-mono text-sm font-bold tracking-tight">{op.name}</span>
+                              <span className="font-mono text-sm font-bold tracking-tight text-gray-900">{op.name}</span>
                             </div>
                             <Button 
                               variant="ghost" 
                               size="icon" 
-                              className="h-8 w-8 text-gray-600 hover:text-red-500 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                              className="h-8 w-8 text-gray-400 hover:text-red-500 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-opacity"
                               onClick={() => handleRemoveOperator(op.id)}
                             >
                               <Trash2 size={14} />
@@ -1054,7 +1054,7 @@ function AppContent() {
 
       {/* Dialogs */}
       <Dialog open={!!selectedItem} onOpenChange={(open) => !open && setSelectedItem(null)}>
-        <DialogContent className="bg-brand-card border-brand-border text-gray-200 sm:max-w-3xl">
+        <DialogContent className="bg-brand-card border-brand-border text-gray-900 sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle className="font-mono tracking-tight">PRÉ-VISUALIZAÇÃO DA ETIQUETA</DialogTitle>
             <DialogDescription className="text-gray-500">
@@ -1118,8 +1118,8 @@ function AppContent() {
           </div>
 
           <DialogFooter className="gap-2">
-            <Button variant="ghost" className="hover:bg-white/5" onClick={() => setSelectedItem(null)}>Fechar</Button>
-            <Button className="bg-brand-accent text-black hover:bg-brand-accent/90" onClick={handlePrint}>
+            <Button variant="ghost" className="hover:bg-gray-100" onClick={() => setSelectedItem(null)}>Fechar</Button>
+            <Button className="bg-brand-accent text-white hover:bg-brand-accent/90" onClick={handlePrint}>
               <Printer className="mr-2" size={16} /> Imprimir Etiqueta
             </Button>
           </DialogFooter>
@@ -1127,9 +1127,9 @@ function AppContent() {
       </Dialog>
 
       <Dialog open={!!orderToDelete} onOpenChange={(open) => !open && setOrderToDelete(null)}>
-        <DialogContent className="bg-brand-card border-brand-border text-gray-200 sm:max-w-md">
+        <DialogContent className="bg-brand-card border-brand-border text-gray-900 sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-500 font-mono">
+            <DialogTitle className="flex items-center gap-2 text-red-600 font-mono">
               <Trash2 size={20} /> DELETAR_LOTE
             </DialogTitle>
             <DialogDescription className="text-gray-500">
@@ -1137,7 +1137,7 @@ function AppContent() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
-            <Button variant="ghost" className="hover:bg-white/5" onClick={() => setOrderToDelete(null)}>Abortar</Button>
+            <Button variant="ghost" className="hover:bg-gray-100" onClick={() => setOrderToDelete(null)}>Abortar</Button>
             <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={handleDeleteOrder}>
               Confirmar Exclusão
             </Button>
@@ -1146,9 +1146,9 @@ function AppContent() {
       </Dialog>
 
       <Dialog open={!!progToDelete} onOpenChange={(open) => !open && setProgToDelete(null)}>
-        <DialogContent className="bg-brand-card border-brand-border text-gray-200 sm:max-w-md">
+        <DialogContent className="bg-brand-card border-brand-border text-gray-900 sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-500 font-mono">
+            <DialogTitle className="flex items-center gap-2 text-red-600 font-mono">
               <Trash2 size={20} /> DELETAR_PROGRAMAÇÃO
             </DialogTitle>
             <DialogDescription className="text-gray-500">
@@ -1156,7 +1156,7 @@ function AppContent() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
-            <Button variant="ghost" className="hover:bg-white/5" onClick={() => setProgToDelete(null)}>Abortar</Button>
+            <Button variant="ghost" className="hover:bg-gray-100" onClick={() => setProgToDelete(null)}>Abortar</Button>
             <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={handleDeleteProgramming}>
               Confirmar Exclusão
             </Button>
