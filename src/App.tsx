@@ -30,7 +30,10 @@ import {
   ArrowRight,
   Scale,
   Droplets,
-  Database
+  Database,
+  RotateCcw,
+  BarChart3,
+  Trophy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import BarcodeComponent from 'react-barcode';
@@ -95,14 +98,7 @@ function AppContent() {
   const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
   const [progToDelete, setProgToDelete] = useState<string | null>(null);
   const [selectedProgForPrint, setSelectedProgForPrint] = useState<Programming | null>(null);
-
-  useEffect(() => {
-    const handleAfterPrint = () => {
-      setSelectedProgForPrint(null);
-    };
-    window.addEventListener('afterprint', handleAfterPrint);
-    return () => window.removeEventListener('afterprint', handleAfterPrint);
-  }, []);
+  const [prodDateFilter, setProdDateFilter] = useState<'today' | 'week' | 'month' | 'all'>('today');
 
   useEffect(() => {
     if (!db) return;
@@ -247,7 +243,7 @@ function AppContent() {
   const handleManualStatusToggle = async (item: FootwearItem) => {
     const newStatus = item.status === 'Produzido' ? 'Pendente' : 'Produzido';
     try {
-      const success = await productionService.updateStatus(item.barcode, newStatus, operatorName || 'ADMIN');
+      const success = await productionService.updateStatusById(item.id, newStatus, operatorName || 'ADMIN');
       if (success) {
         toast.success(`Status atualizado para ${newStatus}`);
       } else {
@@ -459,6 +455,45 @@ function AppContent() {
     pending: items.filter(i => i.status === 'Pendente').reduce((acc, i) => acc + (i.quantity || 0), 0),
   };
 
+  const getFilteredProduction = () => {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    
+    // Week calculation
+    const d = new Date(now);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
+    const startOfWeek = new Date(d.setDate(diff)).setHours(0,0,0,0);
+    
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
+    return items.filter(item => {
+      if (item.status !== 'Produzido') return false;
+      if (prodDateFilter === 'today') return item.updatedAt >= startOfToday;
+      if (prodDateFilter === 'week') return item.updatedAt >= startOfWeek;
+      if (prodDateFilter === 'month') return item.updatedAt >= startOfMonth;
+      return true;
+    });
+  };
+
+  const filteredProduction = getFilteredProduction();
+
+  const operatorProductionStats = operators.map(op => {
+    const opItems = filteredProduction.filter(i => i.producedBy === op.name);
+    const totalPairs = opItems.reduce((acc, i) => acc + (i.quantity || 0), 0);
+    
+    const modelStats = opItems.reduce((acc, i) => {
+      acc[i.model] = (acc[i.model] || 0) + i.quantity;
+      return acc;
+    }, {} as Record<string, number>);
+
+    return {
+      ...op,
+      totalPairs,
+      modelStats: Object.entries(modelStats).map(([model, qty]) => ({ model, qty }))
+    };
+  }).sort((a, b) => b.totalPairs - a.totalPairs);
+
   const groupedItems = filteredItems.reduce((acc, item) => {
     if (!acc[item.orderNumber]) {
       acc[item.orderNumber] = [];
@@ -524,6 +559,13 @@ function AppContent() {
             <span className="font-medium hidden md:block">Operadores</span>
           </button>
           <button 
+            onClick={() => setActiveTab('operator-production')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${activeTab === 'operator-production' ? 'bg-brand-accent/10 text-brand-accent border border-brand-accent/20' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'}`}
+          >
+            <BarChart3 size={20} />
+            <span className="font-medium hidden md:block">Produção Individual</span>
+          </button>
+          <button 
             onClick={() => setActiveTab('materials')}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${activeTab === 'materials' ? 'bg-brand-accent/10 text-brand-accent border border-brand-accent/20' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'}`}
           >
@@ -550,6 +592,7 @@ function AppContent() {
               {activeTab === 'programmings' && 'Programação de Produção'}
               {activeTab === 'scanner' && 'Terminal de Leitura'}
               {activeTab === 'operators' && 'Gestão de Equipe'}
+              {activeTab === 'operator-production' && 'Produção por Operador'}
             </h2>
             <p className="text-gray-500 text-sm">
               {activeTab === 'dashboard' && 'Acompanhe o status de todos os pedidos em tempo real.'}
@@ -557,6 +600,7 @@ function AppContent() {
               {activeTab === 'programmings' && 'Agrupe pedidos em programações semanais ou diárias.'}
               {activeTab === 'scanner' && 'Utilize o leitor de código de barras para registrar a produção.'}
               {activeTab === 'operators' && 'Cadastre e gerencie os operadores da fábrica.'}
+              {activeTab === 'operator-production' && 'Análise de produtividade individual e rankings.'}
             </p>
           </div>
 
@@ -573,8 +617,9 @@ function AppContent() {
           </div>
         </header>
 
-        <Tabs value={activeTab} className="w-full">
-          <AnimatePresence mode="wait">
+        <div className="print:hidden">
+          <Tabs value={activeTab} className="w-full">
+            <AnimatePresence mode="wait">
             <TabsContent value="dashboard" key="dashboard">
               <motion.div 
                 initial={{ opacity: 0, y: 20 }}
@@ -739,14 +784,15 @@ function AppContent() {
                                     </span>
                                   </TableCell>
                                   <TableCell className="text-right">
-                                    <div className="flex justify-end gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity">
+                                    <div className="flex justify-end gap-1 md:opacity-0 md:group-hover/row:opacity-100 opacity-100 transition-opacity">
                                       <Button 
                                         variant="ghost" 
                                         size="icon" 
                                         className={`h-7 w-7 rounded ${item.status === 'Produzido' ? 'text-amber-500 hover:bg-amber-500/10' : 'text-brand-accent hover:bg-brand-accent/10'}`}
                                         onClick={() => handleManualStatusToggle(item)}
+                                        title={item.status === 'Produzido' ? 'Voltar para Pendente' : 'Marcar como Produzido'}
                                       >
-                                        {item.status === 'Produzido' ? <X size={14} /> : <CheckCircle2 size={14} />}
+                                        {item.status === 'Produzido' ? <RotateCcw size={14} /> : <CheckCircle2 size={14} />}
                                       </Button>
                                       <Button 
                                         variant="ghost" 
@@ -1015,10 +1061,14 @@ function AppContent() {
                               ))}
                             </div>
                             <div className="flex gap-2">
-                              <Button variant="outline" size="sm" className="border-brand-border hover:bg-gray-100 text-gray-900" onClick={() => {
-                                setSelectedProgForPrint(prog);
-                                setTimeout(() => window.print(), 100);
-                              }}>
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="border-brand-border hover:bg-gray-100 text-gray-900" 
+                                onClick={() => {
+                                  setSelectedProgForPrint(prog);
+                                }}
+                              >
                                 <Printer size={14} className="mr-2" /> Imprimir Lote
                               </Button>
                               <Button variant="outline" size="sm" className="border-brand-border hover:bg-gray-100 text-gray-900" onClick={() => {
@@ -1111,14 +1161,25 @@ function AppContent() {
                                 <p className="text-[9px] text-brand-accent font-mono uppercase mt-1">OPERADOR: {item.producedBy}</p>
                               </div>
                             </div>
-                            <span className="text-[10px] font-mono text-gray-600">
-                              {new Date(item.updatedAt).toLocaleString('pt-BR', {
-                                day: '2-digit',
-                                month: '2-digit',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
-                            </span>
+                            <div className="flex items-center gap-3">
+                              <span className="text-[10px] font-mono text-gray-600">
+                                {new Date(item.updatedAt).toLocaleString('pt-BR', {
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </span>
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-8 w-8 text-amber-500 hover:bg-amber-500/10 md:opacity-0 md:group-hover:opacity-100 opacity-100 transition-opacity"
+                                onClick={() => handleManualStatusToggle(item)}
+                                title="Reverter para Pendente"
+                              >
+                                <RotateCcw size={14} />
+                              </Button>
+                            </div>
                           </motion.div>
                         ))}
                         {items.filter(i => i.status === 'Produzido').length === 0 && (
@@ -1190,6 +1251,103 @@ function AppContent() {
                     </div>
                   </CardContent>
                 </Card>
+              </motion.div>
+            </TabsContent>
+            <TabsContent value="operator-production" key="operator-production">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="space-y-6"
+              >
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                  <div className="flex bg-gray-100 p-1 rounded-lg border border-brand-border w-full md:w-auto">
+                    <button 
+                      onClick={() => setProdDateFilter('today')}
+                      className={`flex-1 md:flex-none px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${prodDateFilter === 'today' ? 'bg-white text-brand-accent shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                    >
+                      Hoje
+                    </button>
+                    <button 
+                      onClick={() => setProdDateFilter('week')}
+                      className={`flex-1 md:flex-none px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${prodDateFilter === 'week' ? 'bg-white text-brand-accent shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                    >
+                      Semana
+                    </button>
+                    <button 
+                      onClick={() => setProdDateFilter('month')}
+                      className={`flex-1 md:flex-none px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${prodDateFilter === 'month' ? 'bg-white text-brand-accent shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                    >
+                      Mês
+                    </button>
+                    <button 
+                      onClick={() => setProdDateFilter('all')}
+                      className={`flex-1 md:flex-none px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${prodDateFilter === 'all' ? 'bg-white text-brand-accent shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                    >
+                      Total
+                    </button>
+                  </div>
+                  
+                  <div className="flex items-center gap-2 bg-brand-accent/10 px-4 py-2 rounded-full border border-brand-accent/20">
+                    <Trophy size={16} className="text-brand-accent" />
+                    <span className="text-xs font-bold text-brand-accent uppercase tracking-widest">
+                      Ranking de Produtividade
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {operatorProductionStats.map((op, idx) => (
+                    <motion.div
+                      key={op.id}
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: idx * 0.05 }}
+                    >
+                      <Card className="bg-brand-card border-brand-border hover:border-brand-accent/30 transition-all group overflow-hidden">
+                        <CardHeader className="pb-2 relative">
+                          {idx === 0 && op.totalPairs > 0 && (
+                            <div className="absolute top-0 right-0 bg-brand-accent text-white px-3 py-1 rounded-bl-lg flex items-center gap-1 shadow-lg">
+                              <Trophy size={12} />
+                              <span className="text-[10px] font-bold uppercase tracking-tighter">Top 1</span>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-full bg-brand-accent/10 flex items-center justify-center text-brand-accent font-bold text-lg border border-brand-accent/20">
+                              {op.name.charAt(0)}
+                            </div>
+                            <div>
+                              <CardTitle className="text-base font-mono tracking-tight">{op.name}</CardTitle>
+                              <CardDescription className="text-[10px] uppercase tracking-widest">Operador Registrado</CardDescription>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="mt-4 space-y-4">
+                            <div className="bg-brand-bg/50 p-4 rounded-lg border border-brand-border text-center">
+                              <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-1">Total Produzido</p>
+                              <p className="text-3xl font-mono font-bold text-brand-accent">{op.totalPairs} <span className="text-xs text-gray-400">PARES</span></p>
+                            </div>
+                            
+                            <div className="space-y-2">
+                              <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Produção por Modelo</p>
+                              <div className="max-h-32 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+                                {op.modelStats.length > 0 ? op.modelStats.map((ms, i) => (
+                                  <div key={i} className="flex justify-between items-center text-[10px] font-mono bg-white p-2 rounded border border-brand-border">
+                                    <span className="text-gray-600 truncate mr-2">{ms.model}</span>
+                                    <span className="font-bold text-brand-accent">{ms.qty} PRS</span>
+                                  </div>
+                                )) : (
+                                  <p className="text-[10px] text-gray-400 italic text-center py-2">Sem produção no período</p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  ))}
+                </div>
               </motion.div>
             </TabsContent>
             <TabsContent value="materials" key="materials">
@@ -1354,8 +1512,9 @@ function AppContent() {
             </TabsContent>
           </AnimatePresence>
         </Tabs>
+      </div>
 
-        {/* Print View (Hidden in UI, visible in print) */}
+      {/* Print View (Hidden in UI, visible in print) */}
         <div className="hidden print:block">
           {selectedItem && (
             <div className="label-container">
@@ -1580,6 +1739,113 @@ function AppContent() {
               <Printer className="mr-2" size={16} /> Imprimir Etiqueta
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!selectedProgForPrint} onOpenChange={(open) => !open && setSelectedProgForPrint(null)}>
+        <DialogContent className="bg-white text-black sm:max-w-4xl max-h-[90vh] overflow-y-auto p-0 border-none">
+          <div className="p-8">
+            {selectedProgForPrint && (
+              <div className="bg-white text-black">
+                <div className="border-b-4 border-black pb-4 mb-8 flex justify-between items-end">
+                  <div>
+                    <h1 className="text-4xl font-black uppercase tracking-tighter">Relatório de Produção</h1>
+                    <p className="text-xl font-bold text-gray-600 uppercase">{selectedProgForPrint.name}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-bold text-gray-400 uppercase">Data de Emissão</p>
+                    <p className="text-lg font-mono font-bold">{new Date().toLocaleDateString('pt-BR')}</p>
+                  </div>
+                </div>
+
+                {selectedProgForPrint.orderNumbers.map(orderNum => {
+                  const orderItems = items.filter(i => i.orderNumber === orderNum);
+                  if (orderItems.length === 0) return null;
+                  
+                  const firstItem = orderItems[0];
+                  const materialConsList = calculateOrderMaterials(orderItems);
+                  
+                  // Group by size
+                  const sizeSummary = orderItems.reduce((acc, item) => {
+                    acc[item.size] = (acc[item.size] || 0) + item.quantity;
+                    return acc;
+                  }, {} as Record<string, number>);
+
+                  return (
+                    <div key={orderNum} className="mb-10 border-2 border-black p-6 rounded-sm">
+                      <div className="flex justify-between items-start mb-6">
+                        <div>
+                          <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Pedido</p>
+                          <h2 className="text-3xl font-black font-mono">#{orderNum}</h2>
+                        </div>
+                        <div className="text-right">
+                          <h3 className="text-2xl font-black uppercase tracking-tight">{firstItem.model}</h3>
+                          <p className="text-lg font-bold text-gray-600 uppercase">{firstItem.color}</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-4 gap-4 mb-6">
+                        <div className="bg-gray-100 p-3 rounded">
+                          <p className="text-[10px] font-bold text-gray-500 uppercase">Total de Pares</p>
+                          <p className="text-xl font-black font-mono">{orderItems.reduce((acc, i) => acc + i.quantity, 0)}</p>
+                        </div>
+                        <div className="col-span-3 grid grid-cols-2 gap-2">
+                          {materialConsList.map((cons, i) => (
+                            <div key={i} className="bg-brand-accent/5 p-3 rounded border border-brand-accent/20">
+                              <p className="text-[10px] font-bold text-brand-accent uppercase">Consumo ({cons.materialName})</p>
+                              <p className="text-xl font-black font-mono text-brand-accent">
+                                {cons.total.toFixed(3)} {cons.unit}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-500 uppercase mb-2 tracking-widest">Distribuição por Grade</p>
+                        <div className="flex flex-wrap gap-2">
+                          {Object.entries(sizeSummary).sort((a, b) => a[0].localeCompare(b[0])).map(([size, qty]) => (
+                            <div key={size} className="border-2 border-black px-4 py-2 text-center min-w-[60px]">
+                              <p className="text-[10px] font-black text-gray-400 uppercase">Tam</p>
+                              <p className="text-lg font-black font-mono">{size}</p>
+                              <div className="border-t border-black my-1"></div>
+                              <p className="text-lg font-black font-mono">{qty}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <div className="mt-12 pt-8 border-t-2 border-dashed border-gray-300 flex justify-between items-start">
+                  <div>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase mb-4">Resumo da Programação</p>
+                    <div className="flex gap-8">
+                      {calculateProgrammingMaterial(selectedProgForPrint).map((cons, i) => (
+                        <div key={i}>
+                          <p className="text-xs font-bold text-gray-600 uppercase">{cons.materialName}</p>
+                          <p className="text-2xl font-black font-mono">{cons.total.toFixed(2)} {cons.unit}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Total Geral de Pares</p>
+                    <p className="text-4xl font-black font-mono">
+                      {items.filter(i => i.programmingId === selectedProgForPrint.id).reduce((acc, i) => acc + i.quantity, 0)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="p-4 bg-gray-100 border-t flex justify-end gap-2 print:hidden sticky bottom-0">
+            <Button variant="ghost" onClick={() => setSelectedProgForPrint(null)}>Fechar</Button>
+            <Button className="bg-brand-accent text-white hover:bg-brand-accent/90" onClick={() => window.print()}>
+              <Printer className="mr-2" size={16} /> Confirmar Impressão
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

@@ -135,6 +135,29 @@ export const productionService = {
     }
   },
 
+  async updateStatusById(id: string, status: ProductionStatus, operatorName?: string): Promise<boolean> {
+    if (!db) return false;
+    try {
+      const docRef = doc(db, COLLECTION_NAME, id);
+      const updateData: any = {
+        status,
+        updatedAt: Date.now(),
+      };
+      
+      if (operatorName && status === 'Produzido') {
+        updateData.producedBy = operatorName;
+      } else if (status === 'Pendente') {
+        updateData.producedBy = null;
+      }
+
+      await updateDoc(docRef, updateData);
+      return true;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, COLLECTION_NAME);
+      return false;
+    }
+  },
+
   async updateStatus(barcode: string, status: ProductionStatus, operatorName?: string): Promise<boolean> {
     if (!db) return false;
     try {

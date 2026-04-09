@@ -32,7 +32,7 @@ service cloud.firestore {
              data.createdAt is number &&
              data.updatedAt is number &&
              (!('programmingId' in data) || data.programmingId is string) &&
-             (!('producedBy' in data) || (data.producedBy is string && data.producedBy.size() < 100));
+             (!('producedBy' in data) || data.producedBy == null || (data.producedBy is string && data.producedBy.size() < 100));
     }
 
     function isValidOperator(data) {
