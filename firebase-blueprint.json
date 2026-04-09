@@ -10,21 +10,66 @@
         "model": { "type": "string" },
         "color": { "type": "string" },
         "size": { "type": "string" },
+        "quantity": { "type": "number" },
         "barcode": { "type": "string" },
         "status": { 
           "type": "string",
           "enum": ["Pendente", "Produzido", "Cancelado"]
         },
+        "producedBy": { "type": "string" },
+        "orderDate": { "type": "number" },
+        "deadline": { "type": "number" },
+        "programmingId": { "type": "string" },
         "createdAt": { "type": "number" },
         "updatedAt": { "type": "number" }
       },
-      "required": ["orderNumber", "model", "color", "size", "barcode", "status", "createdAt", "updatedAt"]
+      "required": ["orderNumber", "model", "color", "size", "barcode", "status", "createdAt", "updatedAt", "quantity", "orderDate", "deadline"]
+    },
+    "Operator": {
+      "title": "Operator",
+      "description": "A factory operator",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["name", "createdAt"]
+    },
+    "Programming": {
+      "title": "Programming",
+      "description": "A production programming grouping multiple orders",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "orderNumbers": { 
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Ativa", "Concluída", "Arquivada"]
+        },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["name", "orderNumbers", "status", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
     "/productionItems/{itemId}": {
       "schema": "FootwearItem",
       "description": "Collection of all footwear items in production"
+    },
+    "/operators/{operatorId}": {
+      "schema": "Operator",
+      "description": "Collection of factory operators"
+    },
+    "/programmings/{programmingId}": {
+      "schema": "Programming",
+      "description": "Collection of production programmings"
     }
   }
 }

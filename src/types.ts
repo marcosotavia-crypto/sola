@@ -1,5 +1,11 @@
 export type ProductionStatus = 'Pendente' | 'Produzido' | 'Cancelado';
 
+export interface Operator {
+  id: string;
+  name: string;
+  createdAt: number;
+}
+
 export interface FootwearItem {
   id: string;
   orderNumber: string;
@@ -9,8 +15,22 @@ export interface FootwearItem {
   quantity: number;
   barcode: string;
   status: ProductionStatus;
+  producedBy?: string;
+  orderDate: number;
+  deadline: number;
   createdAt: number;
   updatedAt: number;
+  programmingId?: string; // ID of the programming this item belongs to
+}
+
+export interface Programming {
+  id: string;
+  name: string;
+  description?: string;
+  orderNumbers: string[]; // List of order numbers in this programming
+  createdAt: number;
+  updatedAt: number;
+  status: 'Ativa' | 'Concluída' | 'Arquivada';
 }
 
 export interface OrderSummary {
@@ -19,5 +39,7 @@ export interface OrderSummary {
   color: string;
   totalItems: number;
   producedItems: number;
+  orderDate: number;
+  deadline: number;
   createdAt: number;
 }

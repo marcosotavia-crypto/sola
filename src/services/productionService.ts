@@ -8,7 +8,8 @@ import {
   doc, 
   serverTimestamp,
   writeBatch,
-  getDocFromServer
+  getDocFromServer,
+  orderBy
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { FootwearItem, ProductionStatus } from '../types';
@@ -75,6 +76,8 @@ export const productionService = {
     color: string;
     sizeQuantities: { size: string; quantity: number }[];
     pairsPerLabel: number;
+    orderDate: number;
+    deadline: number;
   }): Promise<void> {
     if (!db) return;
     try {
@@ -98,6 +101,8 @@ export const productionService = {
             quantity: currentBatchQty,
             barcode,
             status: 'Pendente',
+            orderDate: orderData.orderDate,
+            deadline: orderData.deadline,
             createdAt: Date.now(),
             updatedAt: Date.now(),
           });
@@ -130,7 +135,7 @@ export const productionService = {
     }
   },
 
-  async updateStatus(barcode: string, status: ProductionStatus): Promise<boolean> {
+  async updateStatus(barcode: string, status: ProductionStatus, operatorName?: string): Promise<boolean> {
     if (!db) return false;
     try {
       const q = query(collection(db, COLLECTION_NAME), where('barcode', '==', barcode));
@@ -138,16 +143,110 @@ export const productionService = {
       
       if (!snapshot.empty) {
         const docRef = doc(db, COLLECTION_NAME, snapshot.docs[0].id);
-        await updateDoc(docRef, {
+        const updateData: any = {
           status,
           updatedAt: Date.now(),
-        });
+        };
+        
+        if (operatorName && status === 'Produzido') {
+          updateData.producedBy = operatorName;
+        } else if (status === 'Pendente') {
+          updateData.producedBy = null; // Clear operator if status is reset to pending
+        }
+
+        await updateDoc(docRef, updateData);
         return true;
       }
       return false;
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, COLLECTION_NAME);
       return false;
+    }
+  },
+
+  async getOperators(): Promise<any[]> {
+    if (!db) return [];
+    try {
+      const q = query(collection(db, 'operators'), orderBy('name', 'asc'));
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'operators');
+      return [];
+    }
+  },
+
+  async addOperator(name: string): Promise<void> {
+    if (!db) return;
+    try {
+      await addDoc(collection(db, 'operators'), {
+        name,
+        createdAt: Date.now()
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'operators');
+    }
+  },
+
+  async deleteOperator(id: string): Promise<void> {
+    if (!db) return;
+    try {
+      const batch = writeBatch(db);
+      batch.delete(doc(db, 'operators', id));
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'operators');
+    }
+  },
+
+  async createProgramming(name: string, description: string, orderNumbers: string[]): Promise<string> {
+    if (!db) return '';
+    try {
+      const docRef = await addDoc(collection(db, 'programmings'), {
+        name,
+        description,
+        orderNumbers,
+        status: 'Ativa',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
+      // Update all items belonging to these orders with the new programmingId
+      const batch = writeBatch(db);
+      for (const orderNum of orderNumbers) {
+        const q = query(collection(db, COLLECTION_NAME), where('orderNumber', '==', orderNum));
+        const snapshot = await getDocs(q);
+        snapshot.docs.forEach(d => {
+          batch.update(d.ref, { programmingId: docRef.id });
+        });
+      }
+      await batch.commit();
+
+      return docRef.id;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'programmings');
+      return '';
+    }
+  },
+
+  async deleteProgramming(id: string): Promise<void> {
+    if (!db) return;
+    try {
+      const batch = writeBatch(db);
+      
+      // Clear programmingId from items
+      const q = query(collection(db, COLLECTION_NAME), where('programmingId', '==', id));
+      const snapshot = await getDocs(q);
+      snapshot.docs.forEach(d => {
+        batch.update(d.ref, { programmingId: null });
+      });
+
+      // Delete programming doc
+      batch.delete(doc(db, 'programmings', id));
+      
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'programmings');
     }
   }
 };
