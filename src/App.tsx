@@ -76,6 +76,11 @@ function AppContent() {
       return;
     }
 
+    if (!pairsPerLabel || pairsPerLabel < 1) {
+      toast.error('A quantidade de pares por etiqueta deve ser pelo menos 1');
+      return;
+    }
+
     try {
       await productionService.createOrder({ 
         orderNumber, 
@@ -346,7 +351,7 @@ function AppContent() {
                   </CardHeader>
                   <CardContent>
                     <form onSubmit={handleCreateOrder} className="space-y-8">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                         <div className="space-y-2">
                           <Label htmlFor="orderNum">Número do Pedido</Label>
                           <Input id="orderNum" placeholder="Ex: PED1001" value={orderNumber} onChange={e => setOrderNumber(e.target.value)} />
@@ -366,8 +371,15 @@ function AppContent() {
                             type="number" 
                             min="1" 
                             max="100" 
-                            value={pairsPerLabel} 
-                            onChange={e => setPairsPerLabel(parseInt(e.target.value) || 1)} 
+                            value={pairsPerLabel || ''} 
+                            onChange={e => {
+                              const val = e.target.value;
+                              if (val === '') {
+                                setPairsPerLabel(0);
+                              } else {
+                                setPairsPerLabel(parseInt(val) || 0);
+                              }
+                            }} 
                           />
                           <p className="text-[10px] text-gray-500 italic">Define o agrupamento máximo por etiqueta.</p>
                         </div>
