@@ -1,0 +1,5 @@
+{
+  "name": "Footwear Production Tracker",
+  "description": "Real-time footwear production management system with barcode generation and tracking.",
+  "requestFramePermissions": []
+}

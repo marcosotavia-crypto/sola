@@ -1,0 +1,30 @@
+{
+  "entities": {
+    "FootwearItem": {
+      "title": "Footwear Item",
+      "description": "A single pair of footwear in production",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "orderNumber": { "type": "string" },
+        "model": { "type": "string" },
+        "color": { "type": "string" },
+        "size": { "type": "string" },
+        "barcode": { "type": "string" },
+        "status": { 
+          "type": "string",
+          "enum": ["Pendente", "Produzido", "Cancelado"]
+        },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["orderNumber", "model", "color", "size", "barcode", "status", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/productionItems/{itemId}": {
+      "schema": "FootwearItem",
+      "description": "Collection of all footwear items in production"
+    }
+  }
+}

@@ -1,0 +1,52 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.email == "Marcosotavia@gmail.com");
+    }
+
+    function isValidStatus(status) {
+      return status in ['Pendente', 'Produzido', 'Cancelado'];
+    }
+
+    function isValidItem(data) {
+      return data.keys().hasAll(['orderNumber', 'model', 'color', 'size', 'barcode', 'status', 'createdAt', 'updatedAt', 'quantity']) &&
+             data.orderNumber is string && data.orderNumber.size() < 50 &&
+             data.model is string && data.model.size() < 100 &&
+             data.color is string && data.color.size() < 50 &&
+             data.size is string && data.size.size() < 10 &&
+             data.barcode is string && data.barcode.size() < 100 &&
+             data.quantity is number && data.quantity > 0 &&
+             isValidStatus(data.status);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /productionItems/{itemId} {
+      // Allow read for everyone
+      allow read: if true;
+      
+      // Allow create if valid data
+      allow create: if isValidItem(request.resource.data);
+      
+      // Allow update if valid data
+      allow update: if isValidItem(request.resource.data) &&
+                    request.resource.data.barcode == resource.data.barcode &&
+                    request.resource.data.createdAt == resource.data.createdAt;
+      
+      // Allow delete for everyone
+      allow delete: if true;
+    }
+  }
+}
