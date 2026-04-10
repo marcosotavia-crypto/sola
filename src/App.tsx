@@ -443,11 +443,16 @@ function AppContent() {
     setSizeQuantities(prev => prev.map(sq => sq.size === size ? { ...sq, quantity: Math.max(0, qty) } : sq));
   };
 
-  const filteredItems = items.filter(item => 
-    item.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.model.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.barcode.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredItems = items.filter(item => {
+    const prog = programmings.find(p => p.id === item.programmingId);
+    const progName = prog ? prog.name.toLowerCase() : '';
+    const query = searchQuery.toLowerCase();
+    
+    return item.orderNumber.toLowerCase().includes(query) ||
+           item.model.toLowerCase().includes(query) ||
+           item.barcode.toLowerCase().includes(query) ||
+           progName.includes(query);
+  });
 
   const stats = {
     total: items.reduce((acc, i) => acc + (i.quantity || 0), 0),
@@ -575,7 +580,10 @@ function AppContent() {
         </nav>
 
         <div className="absolute bottom-8 left-0 right-0 px-3">
-          <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-all">
+          <button 
+            onClick={() => setActiveTab('settings')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${activeTab === 'settings' ? 'bg-brand-accent/10 text-brand-accent border border-brand-accent/20' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'}`}
+          >
             <Settings size={20} />
             <span className="font-medium hidden md:block">Configurações</span>
           </button>
@@ -593,6 +601,8 @@ function AppContent() {
               {activeTab === 'scanner' && 'Terminal de Leitura'}
               {activeTab === 'operators' && 'Gestão de Equipe'}
               {activeTab === 'operator-production' && 'Produção por Operador'}
+              {activeTab === 'materials' && 'Gestão de Materiais'}
+              {activeTab === 'settings' && 'Configurações do Sistema'}
             </h2>
             <p className="text-gray-500 text-sm">
               {activeTab === 'dashboard' && 'Acompanhe o status de todos os pedidos em tempo real.'}
@@ -601,6 +611,8 @@ function AppContent() {
               {activeTab === 'scanner' && 'Utilize o leitor de código de barras para registrar a produção.'}
               {activeTab === 'operators' && 'Cadastre e gerencie os operadores da fábrica.'}
               {activeTab === 'operator-production' && 'Análise de produtividade individual e rankings.'}
+              {activeTab === 'materials' && 'Gerencie o cadastro de materiais e consumo por modelo.'}
+              {activeTab === 'settings' && 'Gerencie as preferências e exportação de dados do aplicativo.'}
             </p>
           </div>
 
@@ -1003,7 +1015,7 @@ function AppContent() {
                       </div>
                     )}
                     {programmings.map(prog => (
-                      <Card key={prog.id} className="bg-brand-card border-brand-border overflow-hidden">
+                      <Card key={prog.id} className="bg-brand-card border-brand-border overflow-hidden mb-4">
                         <div className="p-6">
                           <div className="flex justify-between items-start mb-4">
                             <div>
@@ -1028,7 +1040,7 @@ function AppContent() {
                           <div className="space-y-3">
                             <p className="text-[10px] uppercase font-bold text-gray-500 tracking-widest">Pedidos Incluídos</p>
                             <div className="flex flex-wrap gap-2">
-                              {prog.orderNumbers.map(orderNum => (
+                              {prog.orderNumbers.map((orderNum: string) => (
                                 <div key={orderNum} className="flex items-center gap-2 bg-gray-50 border border-brand-border px-3 py-1.5 rounded-md">
                                   <Package size={12} className="text-brand-accent" />
                                   <span className="text-xs font-mono font-bold text-gray-900">#{orderNum}</span>
@@ -1072,7 +1084,7 @@ function AppContent() {
                                 <Printer size={14} className="mr-2" /> Imprimir Lote
                               </Button>
                               <Button variant="outline" size="sm" className="border-brand-border hover:bg-gray-100 text-gray-900" onClick={() => {
-                                setSearchQuery(prog.orderNumbers[0]); // Quick filter trick
+                                setSearchQuery(prog.name); // Filter by programming name
                                 setActiveTab('dashboard');
                               }}>
                                 Ver Detalhes <ArrowRight size={14} className="ml-2" />
@@ -1508,6 +1520,63 @@ function AppContent() {
                     </CardContent>
                   </Card>
                 </div>
+              </motion.div>
+            </TabsContent>
+
+            <TabsContent value="settings" key="settings">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="max-w-3xl mx-auto space-y-8"
+              >
+                <Card className="bg-brand-card border-brand-border">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Database className="text-brand-accent" size={20} />
+                      Exportação de Dados
+                    </CardTitle>
+                    <CardDescription>Baixe os dados do sistema para planilhas ou backup.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-brand-border">
+                      <div>
+                        <h4 className="font-bold text-gray-900 text-sm">Exportar Pedidos e Produção</h4>
+                        <p className="text-xs text-gray-500">Baixa um arquivo CSV com todo o histórico de produção.</p>
+                      </div>
+                      <Button variant="outline" className="border-brand-accent text-brand-accent hover:bg-brand-accent/10" onClick={() => {
+                        const csvContent = "data:text/csv;charset=utf-8," 
+                          + "Pedido,Modelo,Cor,Tamanho,Código de Barras,Status,Operador,Data de Criação,Data de Atualização\n"
+                          + items.map(i => `${i.orderNumber},${i.model},${i.color},${i.size},${i.barcode},${i.status},${i.producedBy || ''},${new Date(i.createdAt).toLocaleString('pt-BR')},${new Date(i.updatedAt).toLocaleString('pt-BR')}`).join("\n");
+                        const encodedUri = encodeURI(csvContent);
+                        const link = document.createElement("a");
+                        link.setAttribute("href", encodedUri);
+                        link.setAttribute("download", "producao_export.csv");
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        toast.success('Exportação concluída!');
+                      }}>
+                        Baixar CSV
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-brand-card border-brand-border">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Settings className="text-brand-accent" size={20} />
+                      Preferências do Sistema
+                    </CardTitle>
+                    <CardDescription>Configurações gerais do aplicativo.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="p-4 bg-gray-50 rounded-lg border border-brand-border text-center">
+                      <p className="text-sm text-gray-600">Mais configurações estarão disponíveis em breve.</p>
+                    </div>
+                  </CardContent>
+                </Card>
               </motion.div>
             </TabsContent>
           </AnimatePresence>
