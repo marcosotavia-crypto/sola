@@ -8,8 +8,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { 
   Plus, 
+  PlusCircle,
   Package, 
   Barcode, 
   CheckCircle2, 
@@ -40,7 +49,8 @@ import {
   ChevronDown,
   ChevronUp,
   Layers,
-  FileDown
+  FileDown,
+  AlertTriangle
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -59,13 +69,54 @@ import {
 } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
 import BarcodeComponent from 'react-barcode';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { FootwearItem, Operator, Programming, Material, ModelConsumption } from './types';
 import { productionService } from './services/productionService';
 import { db } from './lib/firebase';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+
+const CircularProgress = ({ value, goal }: { value: number; goal: number }) => {
+  const percentage = Math.round((value / goal) * 100);
+  const displayPercentage = Math.min(percentage, 100);
+  const radius = 50;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = circumference - (displayPercentage / 100) * circumference;
+  const isAboveGoal = value >= goal;
+  const color = isAboveGoal ? '#22c55e' : '#ef4444';
+
+  return (
+    <div className="relative flex items-center justify-center">
+      <svg className="w-48 h-48 transform -rotate-90">
+        <circle
+          cx="96"
+          cy="96"
+          r={radius}
+          stroke="#f3f4f6"
+          strokeWidth="12"
+          fill="transparent"
+        />
+        <motion.circle
+          cx="96"
+          cy="96"
+          r={radius}
+          stroke={color}
+          strokeWidth="12"
+          fill="transparent"
+          strokeDasharray={circumference}
+          initial={{ strokeDashoffset: circumference }}
+          animate={{ strokeDashoffset }}
+          transition={{ duration: 1.5, ease: "easeOut" }}
+          strokeLinecap="round"
+        />
+      </svg>
+      <div className="absolute flex flex-col items-center">
+        <span className="text-4xl font-black font-mono" style={{ color }}>{percentage}%</span>
+        <span className="text-[10px] uppercase font-black text-gray-400 tracking-tighter">Produção</span>
+      </div>
+    </div>
+  );
+};
 
 export default function App() {
   return (
@@ -105,6 +156,12 @@ function AppContent() {
   const [progName, setProgName] = useState('');
   const [progDesc, setProgDesc] = useState('');
   const [selectedOrdersForProg, setSelectedOrdersForProg] = useState<string[]>([]);
+  
+  // New UI states
+  const [isDashboardListCollapsed, setIsDashboardListCollapsed] = useState(false);
+  const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
+  const [backupData, setBackupData] = useState<any>(null);
+  const [showUndoReset, setShowUndoReset] = useState(false);
   
   // Material form states
   const [newMaterialName, setNewMaterialName] = useState('');
@@ -360,6 +417,45 @@ function AppContent() {
     }
   };
 
+  const handleResetAllData = async () => {
+    // Backup current data
+    const backup = {
+      productionItems: items,
+      operators: operators,
+      programmings: programmings,
+      materials: materials,
+      modelConsumptions: modelConsumptions
+    };
+    
+    setBackupData(backup);
+    
+    try {
+      await productionService.resetAllData();
+      setIsResetDialogOpen(false);
+      setShowUndoReset(true);
+      toast.success('Todos os dados foram zerados.');
+      
+      // Auto-hide undo after 15 seconds
+      setTimeout(() => {
+        setShowUndoReset(false);
+      }, 15000);
+    } catch (error) {
+      toast.error('Erro ao zerar dados.');
+    }
+  };
+
+  const handleUndoReset = async () => {
+    if (!backupData) return;
+    try {
+      await productionService.restoreData(backupData);
+      setShowUndoReset(false);
+      setBackupData(null);
+      toast.success('Dados restaurados com sucesso!');
+    } catch (error) {
+      toast.error('Erro ao restaurar dados.');
+    }
+  };
+
   const handleDeleteMaterial = async (id: string) => {
     try {
       await productionService.deleteMaterial(id);
@@ -486,7 +582,8 @@ function AppContent() {
   };
 
   const stats = {
-    total: items.reduce((acc, i) => acc + (i.quantity || 0), 0),
+    total: items.length,
+    totalPairs: items.reduce((acc, i) => acc + (i.quantity || 0), 0),
     produced: items.filter(i => i.status === 'Produzido').reduce((acc, i) => acc + (i.quantity || 0), 0),
     pending: items.filter(i => i.status === 'Pendente').reduce((acc, i) => acc + (i.quantity || 0), 0),
     todayProduced: items.filter(i => {
@@ -758,21 +855,6 @@ function AppContent() {
       <main className="ml-20 md:ml-64 p-0 min-h-screen print:ml-0 print:p-0">
         <header className="relative h-48 md:h-64 overflow-hidden flex flex-col justify-end p-6 md:p-8 print:hidden">
           <div className="absolute inset-0 z-0">
-            <img 
-              src={
-                activeTab === 'dashboard' ? 'https://picsum.photos/seed/factory-analytics/1920/1080?blur=2' :
-                activeTab === 'new-order' ? 'https://picsum.photos/seed/footwear-production/1920/1080?blur=2' :
-                activeTab === 'programmings' ? 'https://picsum.photos/seed/planning-schedule/1920/1080?blur=2' :
-                activeTab === 'scanner' ? 'https://picsum.photos/seed/barcode-logistics/1920/1080?blur=2' :
-                activeTab === 'operators' ? 'https://picsum.photos/seed/team-collaboration/1920/1080?blur=2' :
-                activeTab === 'operator-production' ? 'https://picsum.photos/seed/performance-trophy/1920/1080?blur=2' :
-                activeTab === 'materials' ? 'https://picsum.photos/seed/leather-fabrics/1920/1080?blur=2' :
-                'https://picsum.photos/seed/engineering-setup/1920/1080?blur=2'
-              }
-              alt="Header Background"
-              className="w-full h-full object-cover opacity-40"
-              referrerPolicy="no-referrer"
-            />
             <div className="absolute inset-0 bg-gradient-to-t from-brand-bg via-brand-bg/60 to-transparent" />
           </div>
 
@@ -788,16 +870,6 @@ function AppContent() {
                 {activeTab === 'materials' && 'Materiais'}
                 {activeTab === 'settings' && 'Configurações'}
               </h2>
-              <p className="text-gray-600 text-sm font-medium max-w-md">
-                {activeTab === 'dashboard' && 'Acompanhe o status de todos os pedidos em tempo real com análise de dados avançada.'}
-                {activeTab === 'new-order' && 'Configure novos lotes de produção e gere etiquetas inteligentes.'}
-                {activeTab === 'programmings' && 'Gerencie o cronograma de produção e agrupe pedidos estrategicamente.'}
-                {activeTab === 'scanner' && 'Registre a produção instantaneamente através da leitura de códigos de barras.'}
-                {activeTab === 'operators' && 'Gerencie o capital humano e as permissões de acesso da fábrica.'}
-                {activeTab === 'operator-production' && 'Analise detalhadamente o desempenho e produtividade de cada colaborador.'}
-                {activeTab === 'materials' && 'Controle o estoque e o consumo de matérias-primas por modelo.'}
-                {activeTab === 'settings' && 'Personalize as preferências do sistema e realize exportações de segurança.'}
-              </p>
             </div>
 
             <div className="flex items-center gap-4 w-full md:w-auto">
@@ -824,6 +896,17 @@ function AppContent() {
 
         <div className="p-4 md:p-8 pt-0 print:hidden">
           <Tabs value={activeTab} className="w-full">
+            <TabsList className="hidden">
+              <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+              <TabsTrigger value="new-order">Novo Pedido</TabsTrigger>
+              <TabsTrigger value="programmings">Programação</TabsTrigger>
+              <TabsTrigger value="scanner">Bipar Produção</TabsTrigger>
+              <TabsTrigger value="operators">Operadores</TabsTrigger>
+              <TabsTrigger value="operator-production">Produção Individual</TabsTrigger>
+              <TabsTrigger value="materials">Materiais</TabsTrigger>
+              <TabsTrigger value="settings">Configurações</TabsTrigger>
+            </TabsList>
+
             <AnimatePresence mode="wait">
             <TabsContent value="dashboard" key="dashboard">
               <motion.div 
@@ -892,7 +975,7 @@ function AppContent() {
                     <CardHeader className="pb-2">
                       <CardDescription className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Eficiência Geral</CardDescription>
                       <CardTitle className="text-3xl font-mono text-blue-500">
-                        {stats.total > 0 ? Math.round((stats.produced / stats.total) * 100) : 0}%
+                        {stats.totalPairs > 0 ? Math.round((stats.produced / stats.totalPairs) * 100) : 0}%
                       </CardTitle>
                     </CardHeader>
                   </Card>
@@ -900,12 +983,35 @@ function AppContent() {
 
                 {/* Charts Section */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  <Card className="lg:col-span-2 bg-brand-card border-brand-border">
+                  <Card className="lg:col-span-1 bg-brand-card border-brand-border">
                     <CardHeader>
                       <div className="flex items-center justify-between">
                         <div>
                           <CardTitle className="text-lg font-bold">Produção vs Meta</CardTitle>
-                          <CardDescription>Acompanhamento dos últimos 7 dias</CardDescription>
+                          <CardDescription>Acompanhamento diário</CardDescription>
+                        </div>
+                        <Target className="text-gray-400" size={20} />
+                      </div>
+                    </CardHeader>
+                    <CardContent className="flex flex-col items-center justify-center py-10">
+                      <CircularProgress value={stats.todayProduced} goal={dailyGoal} />
+                      <div className="mt-6 text-center">
+                        <p className="text-sm font-bold text-gray-600">
+                          {stats.todayProduced} de {dailyGoal} pares produzidos
+                        </p>
+                        <p className={`text-xs font-medium mt-1 ${stats.todayProduced >= dailyGoal ? 'text-green-600' : 'text-red-600'}`}>
+                          {stats.todayProduced >= dailyGoal ? 'Meta atingida!' : `Faltam ${dailyGoal - stats.todayProduced} pares para a meta`}
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="lg:col-span-2 bg-brand-card border-brand-border">
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle className="text-lg font-bold">Histórico de Produção</CardTitle>
+                          <CardDescription>Últimos 7 dias</CardDescription>
                         </div>
                         <BarChart3 className="text-gray-400" size={20} />
                       </div>
@@ -944,19 +1050,13 @@ function AppContent() {
                             fillOpacity={1} 
                             fill="url(#colorProd)" 
                           />
-                          <Line 
-                            type="monotone" 
-                            dataKey="meta" 
-                            name="Meta Diária" 
-                            stroke="#9ca3af" 
-                            strokeDasharray="5 5" 
-                            dot={false}
-                          />
                         </AreaChart>
                       </ResponsiveContainer>
                     </CardContent>
                   </Card>
+                </div>
 
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   <Card className="bg-brand-card border-brand-border">
                     <CardHeader>
                       <div className="flex items-center justify-between">
@@ -990,9 +1090,6 @@ function AppContent() {
                       </div>
                     </CardContent>
                   </Card>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   <Card className="bg-brand-card border-brand-border">
                     <CardHeader>
                       <div className="flex items-center justify-between">
@@ -1027,83 +1124,20 @@ function AppContent() {
                       </ResponsiveContainer>
                     </CardContent>
                   </Card>
-
-                  <Card className="lg:col-span-2 bg-brand-card border-brand-border">
-                    <CardHeader className="pb-2">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <CardTitle className="text-lg font-bold">Lotes em Andamento</CardTitle>
-                          <CardDescription>Acompanhamento de progresso</CardDescription>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="h-8 w-8 p-0"
-                            onClick={() => toggleLotCollapse('dashboard-active-lots')}
-                          >
-                            {collapsedLots.has('dashboard-active-lots') ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
-                          </Button>
-                          <Package className="text-gray-400" size={20} />
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <AnimatePresence initial={false}>
-                      {!collapsedLots.has('dashboard-active-lots') && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: 'auto', opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          className="overflow-hidden"
-                        >
-                          <CardContent>
-                            <div className="space-y-4">
-                              {(Object.entries(allGroupedItems) as [string, FootwearItem[]][])
-                                .filter(([_, items]) => items.some(i => i.status === 'Pendente'))
-                                .sort((a,b) => (b[1][0].createdAt || 0) - (a[1][0].createdAt || 0))
-                                .slice(0, 5)
-                                .map(([orderNum, orderItems]) => {
-                                  const prog = Math.round((orderItems.filter(i => i.status === 'Produzido').length / orderItems.length) * 100);
-                                  return (
-                                    <div key={orderNum} className="flex items-center gap-4 p-3 rounded-lg border border-brand-border hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => {
-                                      setSearchQuery(orderNum);
-                                      setActiveTab('dashboard');
-                                      setTimeout(() => {
-                                        document.getElementById('detailed-list')?.scrollIntoView({ behavior: 'smooth' });
-                                      }, 100);
-                                    }}>
-                                      <div className="h-10 w-10 rounded bg-brand-accent/5 flex items-center justify-center text-brand-accent">
-                                        <Package size={18} />
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex justify-between items-start">
-                                          <p className="text-sm font-bold font-mono truncate">#{orderNum}</p>
-                                          <span className="text-[10px] font-mono font-bold text-brand-accent">{prog}%</span>
-                                        </div>
-                                        <p className="text-[10px] text-gray-500 truncate">{orderItems[0].model} • {orderItems[0].color}</p>
-                                        <div className="mt-1.5 h-1 w-full bg-gray-100 rounded-full overflow-hidden">
-                                          <div className="h-full bg-brand-accent" style={{ width: `${prog}%` }} />
-                                        </div>
-                                      </div>
-                                      <ArrowRight size={14} className="text-gray-300" />
-                                    </div>
-                                  );
-                                })}
-                              {Object.keys(allGroupedItems).length === 0 && (
-                                <p className="text-center py-10 text-xs text-gray-500 italic">Nenhum lote ativo</p>
-                              )}
-                            </div>
-                          </CardContent>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </Card>
                 </div>
 
                 {/* Orders List Title */}
                 <div className="flex items-center justify-between pt-4 border-t border-brand-border">
                   <div className="flex items-center gap-4">
                     <h3 className="text-sm font-bold uppercase tracking-widest text-gray-500">Lista Detalhada de Pedidos</h3>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-8 w-8 p-0 text-gray-400 hover:text-brand-accent"
+                      onClick={() => setIsDashboardListCollapsed(!isDashboardListCollapsed)}
+                    >
+                      {isDashboardListCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+                    </Button>
                     {searchQuery && (
                       <Button 
                         variant="ghost" 
@@ -1119,197 +1153,207 @@ function AppContent() {
                 </div>
 
                 {/* Orders List */}
-                <div id="detailed-list" className="space-y-6">
-                  {(Object.entries(groupedItems) as [string, FootwearItem[]][]).sort((a,b) => (b[1][0].createdAt || 0) - (a[1][0].createdAt || 0)).map(([orderNum, orderItems], idx) => (
-                    <motion.div
-                      key={orderNum}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: idx * 0.05 }}
+                <AnimatePresence>
+                  {!isDashboardListCollapsed && (
+                    <motion.div 
+                      id="detailed-list" 
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="space-y-6 overflow-hidden"
                     >
-                      <Card className="bg-brand-card border-brand-border overflow-hidden group">
-                        <div className="bg-gray-50 border-b border-brand-border px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                          <div className="flex items-center gap-4">
-                            <div className="h-10 w-10 rounded bg-brand-accent/10 flex items-center justify-center text-brand-accent border border-brand-accent/20">
-                              <Package size={20} />
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-mono font-bold text-brand-accent uppercase tracking-widest">Lote Ativo</span>
-                                <h3 className="text-lg font-bold font-mono text-gray-900">#{orderNum}</h3>
-                              </div>
-                              <p className="text-xs text-gray-500 font-medium">{orderItems[0].model} • {orderItems[0].color}</p>
-                              <div className="flex gap-4 mt-1">
-                                <p className="text-[10px] text-gray-500 font-mono uppercase">Pedido: {new Date(orderItems[0].orderDate).toLocaleDateString('pt-BR')}</p>
-                                <p className={`text-[10px] font-mono uppercase font-bold ${
-                                  (orderItems[0].deadline < Date.now() && orderItems.some(i => i.status !== 'Produzido')) 
-                                    ? 'text-red-500' 
-                                    : 'text-gray-500'
-                                }`}>
-                                  Limite: {new Date(orderItems[0].deadline).toLocaleDateString('pt-BR')}
-                                </p>
-                              </div>
-                              {calculateOrderMaterial(orderItems) && (
-                                <div className="mt-2 flex items-center gap-2 bg-brand-accent/5 border border-brand-accent/10 px-2 py-1 rounded w-fit">
-                                  <Scale size={12} className="text-brand-accent" />
-                                  <span className="text-[10px] font-bold text-gray-700">
-                                    Consumo: <span className="text-brand-accent">{calculateOrderMaterial(orderItems)?.total.toFixed(2)} {calculateOrderMaterial(orderItems)?.unit}</span> de {calculateOrderMaterial(orderItems)?.materialName}
-                                  </span>
+                      {(Object.entries(groupedItems) as [string, FootwearItem[]][]).sort((a,b) => (b[1][0].createdAt || 0) - (a[1][0].createdAt || 0)).map(([orderNum, orderItems], idx) => (
+                        <motion.div
+                          key={orderNum}
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: idx * 0.05 }}
+                        >
+                          <Card className="bg-brand-card border-brand-border overflow-hidden group">
+                            <div className="bg-gray-50 border-b border-brand-border px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                              <div className="flex items-center gap-4">
+                                <div className="h-10 w-10 rounded bg-brand-accent/10 flex items-center justify-center text-brand-accent border border-brand-accent/20">
+                                  <Package size={20} />
                                 </div>
-                              )}
-                            </div>
-                          </div>
-                          
-                          <div className="flex items-center gap-6 w-full sm:w-auto">
-                            <div className="flex-1 sm:flex-none">
-                              <div className="flex justify-between text-[10px] font-mono uppercase text-gray-500 mb-1">
-                                <span>Progresso</span>
-                                <span>{Math.round((orderItems.filter(i => i.status === 'Produzido').length / orderItems.length) * 100)}%</span>
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-mono font-bold text-brand-accent uppercase tracking-widest">Lote Ativo</span>
+                                    <h3 className="text-lg font-bold font-mono text-gray-900">#{orderNum}</h3>
+                                  </div>
+                                  <p className="text-xs text-gray-500 font-medium">{orderItems[0].model} • {orderItems[0].color}</p>
+                                  <div className="flex gap-4 mt-1">
+                                    <p className="text-[10px] text-gray-500 font-mono uppercase">Pedido: {new Date(orderItems[0].orderDate).toLocaleDateString('pt-BR')}</p>
+                                    <p className={`text-[10px] font-mono uppercase font-bold ${
+                                      (orderItems[0].deadline < Date.now() && orderItems.some(i => i.status !== 'Produzido')) 
+                                        ? 'text-red-500' 
+                                        : 'text-gray-500'
+                                    }`}>
+                                      Limite: {new Date(orderItems[0].deadline).toLocaleDateString('pt-BR')}
+                                    </p>
+                                  </div>
+                                  {calculateOrderMaterial(orderItems) && (
+                                    <div className="mt-2 flex items-center gap-2 bg-brand-accent/5 border border-brand-accent/10 px-2 py-1 rounded w-fit">
+                                      <Scale size={12} className="text-brand-accent" />
+                                      <span className="text-[10px] font-bold text-gray-700">
+                                        Consumo: <span className="text-brand-accent">{calculateOrderMaterial(orderItems)?.total.toFixed(2)} {calculateOrderMaterial(orderItems)?.unit}</span> de {calculateOrderMaterial(orderItems)?.materialName}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
-                              <div className="h-1.5 w-full sm:w-32 bg-brand-border rounded-full overflow-hidden">
-                                <div 
-                                  className="h-full bg-brand-accent transition-all duration-500" 
-                                  style={{ width: `${(orderItems.filter(i => i.status === 'Produzido').length / orderItems.length) * 100}%` }}
-                                />
+                              
+                              <div className="flex items-center gap-6 w-full sm:w-auto">
+                                <div className="flex-1 sm:flex-none">
+                                  <div className="flex justify-between text-[10px] font-mono uppercase text-gray-500 mb-1">
+                                    <span>Progresso</span>
+                                    <span>{Math.round((orderItems.filter(i => i.status === 'Produzido').length / orderItems.length) * 100)}%</span>
+                                  </div>
+                                  <div className="h-1.5 w-full sm:w-32 bg-brand-border rounded-full overflow-hidden">
+                                    <div 
+                                      className="h-full bg-brand-accent transition-all duration-500" 
+                                      style={{ width: `${(orderItems.filter(i => i.status === 'Produzido').length / orderItems.length) * 100}%` }}
+                                    />
+                                  </div>
+                                </div>
+                                
+                                <div className="flex gap-2">
+                                  <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    className="h-8 w-8 p-0 text-gray-500 hover:bg-gray-100" 
+                                    onClick={() => toggleLotCollapse(orderNum)}
+                                  >
+                                    {collapsedLots.has(orderNum) ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                                  </Button>
+                                  <Button variant="outline" size="sm" className="h-8 bg-transparent border-brand-border hover:bg-gray-100" onClick={() => handlePrintAll(orderItems)}>
+                                    <Printer size={14} className="mr-2" /> Etiquetas
+                                  </Button>
+                                  <Button variant="ghost" size="sm" className="h-8 text-red-500 hover:text-red-400 hover:bg-red-500/10" onClick={() => setOrderToDelete(orderNum)}>
+                                    <Trash2 size={14} />
+                                  </Button>
+                                </div>
                               </div>
                             </div>
-                            
-                            <div className="flex gap-2">
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="h-8 w-8 p-0 text-gray-500 hover:bg-gray-100" 
-                                onClick={() => toggleLotCollapse(orderNum)}
-                              >
-                                {collapsedLots.has(orderNum) ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
-                              </Button>
-                              <Button variant="outline" size="sm" className="h-8 bg-transparent border-brand-border hover:bg-gray-100" onClick={() => handlePrintAll(orderItems)}>
-                                <Printer size={14} className="mr-2" /> Etiquetas
-                              </Button>
-                              <Button variant="ghost" size="sm" className="h-8 text-red-500 hover:text-red-400 hover:bg-red-500/10" onClick={() => setOrderToDelete(orderNum)}>
-                                <Trash2 size={14} />
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
 
-                        <AnimatePresence initial={false}>
-                          {!collapsedLots.has(orderNum) && (
-                            <motion.div 
-                              initial={{ height: 0, opacity: 0 }}
-                              animate={{ height: 'auto', opacity: 1 }}
-                              exit={{ height: 0, opacity: 0 }}
-                              className="overflow-hidden"
-                            >
-                              <div className="overflow-x-auto">
-                                <Table>
-                                  <TableHeader>
-                                    <TableRow className="hover:bg-transparent border-brand-border">
-                                      <TableHead className="w-10 py-4">
-                                        <input 
-                                          type="checkbox" 
-                                          className="rounded border-gray-300 text-brand-accent focus:ring-brand-accent h-4 w-4"
-                                          checked={orderItems.every(i => selectedItems.has(i.id))}
-                                          onChange={(e) => {
-                                            const newSelected = new Set(selectedItems);
-                                            if (e.target.checked) {
-                                              orderItems.forEach(i => newSelected.add(i.id));
-                                            } else {
-                                              orderItems.forEach(i => newSelected.delete(i.id));
-                                            }
-                                            setSelectedItems(newSelected);
-                                          }}
-                                        />
-                                      </TableHead>
-                                      <TableHead className="font-mono text-[10px] uppercase tracking-widest text-gray-500 py-4">Tam</TableHead>
-                                      <TableHead className="font-mono text-[10px] uppercase tracking-widest text-gray-500 py-4">Qtd</TableHead>
-                                      <TableHead className="font-mono text-[10px] uppercase tracking-widest text-gray-500 py-4">Barcode ID</TableHead>
-                                      <TableHead className="font-mono text-[10px] uppercase tracking-widest text-gray-500 py-4">Status</TableHead>
-                                      <TableHead className="font-mono text-[10px] uppercase tracking-widest text-gray-500 py-4">Operador</TableHead>
-                                      <TableHead className="font-mono text-[10px] uppercase tracking-widest text-gray-500 py-4">Data/Hora</TableHead>
-                                      <TableHead className="font-mono text-[10px] uppercase tracking-widest text-gray-500 py-4 text-right">Ação</TableHead>
-                                    </TableRow>
-                                  </TableHeader>
-                                  <TableBody>
-                                    {orderItems.sort((a,b) => a.size.localeCompare(b.size)).map((item) => (
-                                      <TableRow key={item.id} className="border-brand-border hover:bg-gray-50 transition-colors group/row">
-                                        <TableCell className="py-4">
-                                          <input 
-                                            type="checkbox" 
-                                            className="rounded border-gray-300 text-brand-accent focus:ring-brand-accent h-4 w-4"
-                                            checked={selectedItems.has(item.id)}
-                                            onChange={() => {
-                                              const newSelected = new Set(selectedItems);
-                                              if (newSelected.has(item.id)) {
-                                                newSelected.delete(item.id);
-                                              } else {
-                                                newSelected.add(item.id);
-                                              }
-                                              setSelectedItems(newSelected);
-                                            }}
-                                          />
-                                        </TableCell>
-                                        <TableCell className="font-mono font-bold text-brand-accent">{item.size}</TableCell>
-                                        <TableCell className="font-mono text-sm text-gray-900">{(item.quantity || 0)} <span className="text-[10px] text-gray-500">PARES</span></TableCell>
-                                        <TableCell>
-                                          <code className="font-mono text-[10px] bg-gray-100 px-2 py-1 rounded border border-brand-border text-gray-900">{item.barcode}</code>
-                                        </TableCell>
-                                        <TableCell>
-                                          <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                            item.status === 'Produzido' 
-                                              ? 'bg-brand-accent/10 text-brand-accent' 
-                                              : 'bg-amber-500/10 text-amber-500'
-                                          }`}>
-                                            <div className={`h-1 w-1 rounded-full ${item.status === 'Produzido' ? 'bg-brand-accent' : 'bg-amber-500'}`} />
-                                            {item.status}
-                                          </div>
-                                        </TableCell>
-                                        <TableCell>
-                                          <span className="text-[10px] font-mono text-gray-400 uppercase">{item.producedBy || '-'}</span>
-                                        </TableCell>
-                                        <TableCell>
-                                          <span className="text-[10px] font-mono text-gray-400">
-                                            {item.status === 'Produzido' ? new Date(item.updatedAt).toLocaleString('pt-BR', {
-                                              day: '2-digit',
-                                              month: '2-digit',
-                                              hour: '2-digit',
-                                              minute: '2-digit'
-                                            }) : '-'}
-                                          </span>
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                          <div className="flex justify-end gap-1 md:opacity-0 md:group-hover/row:opacity-100 opacity-100 transition-opacity">
-                                            <Button 
-                                              variant="ghost" 
-                                              size="icon" 
-                                              className={`h-7 w-7 rounded ${item.status === 'Produzido' ? 'text-amber-500 hover:bg-amber-500/10' : 'text-brand-accent hover:bg-brand-accent/10'}`}
-                                              onClick={() => handleManualStatusToggle(item)}
-                                              title={item.status === 'Produzido' ? 'Voltar para Pendente' : 'Marcar como Produzido'}
-                                            >
-                                              {item.status === 'Produzido' ? <RotateCcw size={14} /> : <CheckCircle2 size={14} />}
-                                            </Button>
-                                            <Button 
-                                              variant="ghost" 
-                                              size="icon" 
-                                              className="h-7 w-7 rounded text-gray-400 hover:text-gray-900 hover:bg-gray-100"
-                                              onClick={() => setSelectedItem(item)}
-                                            >
-                                              <Maximize2 size={14} />
-                                            </Button>
-                                          </div>
-                                        </TableCell>
-                                      </TableRow>
-                                    ))}
-                                  </TableBody>
-                                </Table>
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </Card>
+                            <AnimatePresence initial={false}>
+                              {!collapsedLots.has(orderNum) && (
+                                <motion.div 
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: 'auto', opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  className="overflow-hidden"
+                                >
+                                  <div className="overflow-x-auto">
+                                    <Table>
+                                      <TableHeader>
+                                        <TableRow className="hover:bg-transparent border-brand-border">
+                                          <TableHead className="w-10 py-4">
+                                            <input 
+                                              type="checkbox" 
+                                              className="rounded border-gray-300 text-brand-accent focus:ring-brand-accent h-4 w-4"
+                                              checked={orderItems.every(i => selectedItems.has(i.id))}
+                                              onChange={(e) => {
+                                                const newSelected = new Set(selectedItems);
+                                                if (e.target.checked) {
+                                                  orderItems.forEach(i => newSelected.add(i.id));
+                                                } else {
+                                                  orderItems.forEach(i => newSelected.delete(i.id));
+                                                }
+                                                setSelectedItems(newSelected);
+                                              }}
+                                            />
+                                          </TableHead>
+                                          <TableHead className="font-mono text-[10px] uppercase tracking-widest text-gray-500 py-4">Tam</TableHead>
+                                          <TableHead className="font-mono text-[10px] uppercase tracking-widest text-gray-500 py-4">Qtd</TableHead>
+                                          <TableHead className="font-mono text-[10px] uppercase tracking-widest text-gray-500 py-4">Barcode ID</TableHead>
+                                          <TableHead className="font-mono text-[10px] uppercase tracking-widest text-gray-500 py-4">Status</TableHead>
+                                          <TableHead className="font-mono text-[10px] uppercase tracking-widest text-gray-500 py-4">Operador</TableHead>
+                                          <TableHead className="font-mono text-[10px] uppercase tracking-widest text-gray-500 py-4">Data/Hora</TableHead>
+                                          <TableHead className="font-mono text-[10px] uppercase tracking-widest text-gray-500 py-4 text-right">Ação</TableHead>
+                                        </TableRow>
+                                      </TableHeader>
+                                      <TableBody>
+                                        {orderItems.sort((a,b) => a.size.localeCompare(b.size)).map((item) => (
+                                          <TableRow key={item.id} className="border-brand-border hover:bg-gray-50 transition-colors group/row">
+                                            <TableCell className="py-4">
+                                              <input 
+                                                type="checkbox" 
+                                                className="rounded border-gray-300 text-brand-accent focus:ring-brand-accent h-4 w-4"
+                                                checked={selectedItems.has(item.id)}
+                                                onChange={() => {
+                                                  const newSelected = new Set(selectedItems);
+                                                  if (newSelected.has(item.id)) {
+                                                    newSelected.delete(item.id);
+                                                  } else {
+                                                    newSelected.add(item.id);
+                                                  }
+                                                  setSelectedItems(newSelected);
+                                                }}
+                                              />
+                                            </TableCell>
+                                            <TableCell className="font-mono font-bold text-brand-accent">{item.size}</TableCell>
+                                            <TableCell className="font-mono text-sm text-gray-900">{(item.quantity || 0)} <span className="text-[10px] text-gray-500">PARES</span></TableCell>
+                                            <TableCell>
+                                              <code className="font-mono text-[10px] bg-gray-100 px-2 py-1 rounded border border-brand-border text-gray-900">{item.barcode}</code>
+                                            </TableCell>
+                                            <TableCell>
+                                              <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                                item.status === 'Produzido' 
+                                                  ? 'bg-brand-accent/10 text-brand-accent' 
+                                                  : 'bg-amber-500/10 text-amber-500'
+                                              }`}>
+                                                <div className={`h-1 w-1 rounded-full ${item.status === 'Produzido' ? 'bg-brand-accent' : 'bg-amber-500'}`} />
+                                                {item.status}
+                                              </div>
+                                            </TableCell>
+                                            <TableCell>
+                                              <span className="text-[10px] font-mono text-gray-400 uppercase">{item.producedBy || '-'}</span>
+                                            </TableCell>
+                                            <TableCell>
+                                              <span className="text-[10px] font-mono text-gray-400">
+                                                {item.status === 'Produzido' ? new Date(item.updatedAt).toLocaleString('pt-BR', {
+                                                  day: '2-digit',
+                                                  month: '2-digit',
+                                                  hour: '2-digit',
+                                                  minute: '2-digit'
+                                                }) : '-'}
+                                              </span>
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                              <div className="flex justify-end gap-1 md:opacity-0 md:group-hover/row:opacity-100 opacity-100 transition-opacity">
+                                                <Button 
+                                                  variant="ghost" 
+                                                  size="icon" 
+                                                  className={`h-7 w-7 rounded ${item.status === 'Produzido' ? 'text-amber-500 hover:bg-amber-500/10' : 'text-brand-accent hover:bg-brand-accent/10'}`}
+                                                  onClick={() => handleManualStatusToggle(item)}
+                                                  title={item.status === 'Produzido' ? 'Voltar para Pendente' : 'Marcar como Produzido'}
+                                                >
+                                                  {item.status === 'Produzido' ? <RotateCcw size={14} /> : <CheckCircle2 size={14} />}
+                                                </Button>
+                                                <Button 
+                                                  variant="ghost" 
+                                                  size="icon" 
+                                                  className="h-7 w-7 rounded text-gray-400 hover:text-gray-900 hover:bg-gray-100"
+                                                  onClick={() => setSelectedItem(item)}
+                                                >
+                                                  <Maximize2 size={14} />
+                                                </Button>
+                                              </div>
+                                            </TableCell>
+                                          </TableRow>
+                                        ))}
+                                      </TableBody>
+                                    </Table>
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </Card>
+                        </motion.div>
+                      ))}
                     </motion.div>
-                  ))}
-                </div>
+                  )}
+                </AnimatePresence>
               </motion.div>
             </TabsContent>
 
@@ -1318,10 +1362,10 @@ function AppContent() {
                 initial={{ opacity: 0, scale: 0.98 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.98 }}
-                className="max-w-4xl mx-auto space-y-8"
+                className="max-w-4xl mx-auto"
               >
                 {/* Card 1: Automatic Lot Creation */}
-                <Card className="bg-brand-card border-brand-border shadow-2xl">
+                <Card className="bg-brand-card border-brand-border shadow-sm">
                   <CardHeader className="border-b border-brand-border pb-6">
                     <CardTitle className="text-xl flex items-center gap-2">
                       <Plus className="text-brand-accent" size={20} />
@@ -1416,7 +1460,7 @@ function AppContent() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
-                className="space-y-8"
+                className="space-y-6"
               >
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                   {/* Create Programming Form */}
@@ -1593,7 +1637,7 @@ function AppContent() {
                 initial={{ opacity: 0, scale: 0.98 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.98 }}
-                className="max-w-4xl mx-auto space-y-8"
+                className="max-w-4xl mx-auto space-y-6"
               >
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   {/* Single Scan Card */}
@@ -1768,9 +1812,9 @@ function AppContent() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
-                className="max-w-2xl mx-auto"
+                className="max-w-4xl mx-auto"
               >
-                <Card className="bg-brand-card border-brand-border shadow-2xl">
+                <Card className="bg-brand-card border-brand-border shadow-sm max-w-2xl mx-auto">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Users className="text-brand-accent" size={20} />
@@ -1925,7 +1969,7 @@ function AppContent() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
-                className="space-y-8"
+                className="space-y-6"
               >
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   {/* Materials Management */}
@@ -2092,11 +2136,11 @@ function AppContent() {
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Database className="text-brand-accent" size={20} />
-                      Exportação de Dados
+                      Gerenciamento de Dados
                     </CardTitle>
-                    <CardDescription>Baixe os dados do sistema para planilhas ou backup.</CardDescription>
+                    <CardDescription>Ações de exportação e limpeza do sistema.</CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardContent className="space-y-6">
                     <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-brand-border">
                       <div>
                         <h4 className="font-bold text-gray-900 text-sm">Exportar Pedidos e Produção</h4>
@@ -2115,7 +2159,21 @@ function AppContent() {
                         document.body.removeChild(link);
                         toast.success('Exportação concluída!');
                       }}>
-                        Baixar CSV
+                        Exportar CSV
+                      </Button>
+                    </div>
+
+                    <div className="flex items-center justify-between p-4 bg-red-50 rounded-lg border border-red-100">
+                      <div>
+                        <h4 className="font-bold text-red-900 text-sm">Zerar Todos os Dados</h4>
+                        <p className="text-xs text-red-600">Apaga permanentemente todos os pedidos, operadores e materiais.</p>
+                      </div>
+                      <Button 
+                        variant="destructive" 
+                        className="bg-red-600 hover:bg-red-700"
+                        onClick={() => setIsResetDialogOpen(true)}
+                      >
+                        <Trash2 size={16} className="mr-2" /> Zerar Dados
                       </Button>
                     </div>
                   </CardContent>
@@ -2599,6 +2657,71 @@ function AppContent() {
       </AnimatePresence>
 
       <Toaster theme="dark" position="top-right" />
+
+      {/* Undo Reset Banner */}
+      <AnimatePresence>
+        {showUndoReset && (
+          <motion.div 
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-full max-w-md px-4"
+          >
+            <div className="bg-gray-900 text-white p-4 rounded-xl shadow-2xl flex items-center justify-between gap-4 border border-gray-800">
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-500">
+                  <RotateCcw size={18} />
+                </div>
+                <div>
+                  <p className="text-sm font-bold">Dados Zerados</p>
+                  <p className="text-[10px] text-gray-400">Você tem 15 segundos para desfazer.</p>
+                </div>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+                onClick={handleUndoReset}
+              >
+                DESFAZER
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Reset Confirmation Dialog */}
+      <Dialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
+        <DialogContent className="bg-brand-card border-brand-border sm:max-w-md">
+          <DialogHeader>
+            <div className="mx-auto bg-red-100 p-3 rounded-full w-fit mb-4">
+              <AlertTriangle className="text-red-600" size={32} />
+            </div>
+            <DialogTitle className="text-center text-xl font-bold text-gray-900">Zerar Todos os Dados?</DialogTitle>
+            <DialogDescription className="text-center text-gray-500">
+              Esta ação irá apagar permanentemente todos os pedidos, operadores, materiais e programações. 
+              <br/><br/>
+              <span className="font-bold text-red-600">Esta ação não pode ser desfeita após o período de carência.</span>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex flex-col sm:flex-row gap-2 mt-6">
+            <Button 
+              variant="ghost" 
+              className="flex-1 hover:bg-gray-100" 
+              onClick={() => setIsResetDialogOpen(false)}
+            >
+              CANCELAR
+            </Button>
+            <Button 
+              variant="destructive" 
+              className="flex-1 bg-red-600 hover:bg-red-700" 
+              onClick={handleResetAllData}
+            >
+              SIM, ZERAR TUDO
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

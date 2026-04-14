@@ -342,5 +342,39 @@ export const productionService = {
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, 'modelConsumptions');
     }
+  },
+
+  async resetAllData(): Promise<void> {
+    if (!db) return;
+    try {
+      const collections = [COLLECTION_NAME, 'operators', 'programmings', 'materials', 'modelConsumptions'];
+      
+      for (const colName of collections) {
+        const snapshot = await getDocs(collection(db, colName));
+        const batch = writeBatch(db);
+        snapshot.docs.forEach(d => {
+          batch.delete(d.ref);
+        });
+        await batch.commit();
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'all');
+    }
+  },
+
+  async restoreData(backup: any): Promise<void> {
+    if (!db) return;
+    try {
+      for (const [colName, docs] of Object.entries(backup) as [string, any[]][]) {
+        const batch = writeBatch(db);
+        docs.forEach((d: any) => {
+          const { id, ...data } = d;
+          batch.set(doc(db, colName, id), data);
+        });
+        await batch.commit();
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'restore');
+    }
   }
 };
