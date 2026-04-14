@@ -50,7 +50,8 @@ import {
   ChevronUp,
   Layers,
   FileDown,
-  AlertTriangle
+  AlertTriangle,
+  Pencil
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -79,7 +80,7 @@ import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 const CircularProgress = ({ value, goal }: { value: number; goal: number }) => {
   const percentage = Math.round((value / goal) * 100);
   const displayPercentage = Math.min(percentage, 100);
-  const radius = 50;
+  const radius = 80;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (displayPercentage / 100) * circumference;
   const isAboveGoal = value >= goal;
@@ -87,21 +88,21 @@ const CircularProgress = ({ value, goal }: { value: number; goal: number }) => {
 
   return (
     <div className="relative flex items-center justify-center">
-      <svg className="w-48 h-48 transform -rotate-90">
+      <svg className="w-64 h-64 transform -rotate-90">
         <circle
-          cx="96"
-          cy="96"
+          cx="128"
+          cy="128"
           r={radius}
           stroke="#f3f4f6"
-          strokeWidth="12"
+          strokeWidth="16"
           fill="transparent"
         />
         <motion.circle
-          cx="96"
-          cy="96"
+          cx="128"
+          cy="128"
           r={radius}
           stroke={color}
-          strokeWidth="12"
+          strokeWidth="16"
           fill="transparent"
           strokeDasharray={circumference}
           initial={{ strokeDashoffset: circumference }}
@@ -111,8 +112,8 @@ const CircularProgress = ({ value, goal }: { value: number; goal: number }) => {
         />
       </svg>
       <div className="absolute flex flex-col items-center">
-        <span className="text-4xl font-black font-mono" style={{ color }}>{percentage}%</span>
-        <span className="text-[10px] uppercase font-black text-gray-400 tracking-tighter">Produção</span>
+        <span className="text-6xl font-black font-mono" style={{ color }}>{percentage}%</span>
+        <span className="text-xs uppercase font-black text-gray-400 tracking-tighter">Produção</span>
       </div>
     </div>
   );
@@ -922,7 +923,17 @@ function AppContent() {
                       <Target size={64} />
                     </div>
                     <CardHeader className="pb-2">
-                      <CardDescription className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Meta Diária</CardDescription>
+                      <div className="flex items-center justify-between">
+                        <CardDescription className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Meta Diária</CardDescription>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-6 w-6 text-gray-400 hover:text-brand-accent"
+                          onClick={() => setIsEditingGoal(true)}
+                        >
+                          <Pencil size={12} />
+                        </Button>
+                      </div>
                       <CardTitle className="text-3xl font-mono flex items-center justify-between">
                         {isEditingGoal ? (
                           <Input 
@@ -931,10 +942,11 @@ function AppContent() {
                             value={dailyGoal} 
                             onChange={(e) => setDailyGoal(Number(e.target.value))}
                             onBlur={() => setIsEditingGoal(false)}
+                            onKeyDown={(e) => e.key === 'Enter' && setIsEditingGoal(false)}
                             autoFocus
                           />
                         ) : (
-                          <span onClick={() => setIsEditingGoal(true)} className="cursor-pointer hover:text-brand-accent transition-colors">
+                          <span onClick={() => setIsEditingGoal(true)} className="cursor-pointer hover:text-brand-accent transition-colors flex items-center gap-2">
                             {dailyGoal}
                           </span>
                         )}
@@ -1170,7 +1182,10 @@ function AppContent() {
                           transition={{ delay: idx * 0.05 }}
                         >
                           <Card className="bg-brand-card border-brand-border overflow-hidden group">
-                            <div className="bg-gray-50 border-b border-brand-border px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                            <div 
+                              className="bg-gray-50 border-b border-brand-border px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 cursor-pointer hover:bg-gray-100 transition-colors"
+                              onClick={() => toggleLotCollapse(orderNum)}
+                            >
                               <div className="flex items-center gap-4">
                                 <div className="h-10 w-10 rounded bg-brand-accent/10 flex items-center justify-center text-brand-accent border border-brand-accent/20">
                                   <Package size={20} />
@@ -1202,7 +1217,7 @@ function AppContent() {
                                 </div>
                               </div>
                               
-                              <div className="flex items-center gap-6 w-full sm:w-auto">
+                              <div className="flex items-center gap-6 w-full sm:w-auto" onClick={e => e.stopPropagation()}>
                                 <div className="flex-1 sm:flex-none">
                                   <div className="flex justify-between text-[10px] font-mono uppercase text-gray-500 mb-1">
                                     <span>Progresso</span>
@@ -1221,7 +1236,10 @@ function AppContent() {
                                     variant="ghost" 
                                     size="sm" 
                                     className="h-8 w-8 p-0 text-gray-500 hover:bg-gray-100" 
-                                    onClick={() => toggleLotCollapse(orderNum)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      toggleLotCollapse(orderNum);
+                                    }}
                                   >
                                     {collapsedLots.has(orderNum) ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
                                   </Button>
@@ -2188,8 +2206,20 @@ function AppContent() {
                     <CardDescription>Configurações gerais do aplicativo.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="p-4 bg-gray-50 rounded-lg border border-brand-border text-center">
-                      <p className="text-sm text-gray-600">Mais configurações estarão disponíveis em breve.</p>
+                    <div className="p-4 bg-gray-50 rounded-lg border border-brand-border">
+                      <Label className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-2 block">Meta Diária de Produção (Pares)</Label>
+                      <div className="flex gap-2">
+                        <Input 
+                          type="number" 
+                          className="bg-white border-brand-border text-gray-900 font-mono text-lg"
+                          value={dailyGoal}
+                          onChange={e => setDailyGoal(Number(e.target.value))}
+                        />
+                        <div className="flex items-center px-4 bg-brand-accent/10 border border-brand-accent/20 rounded-md text-brand-accent font-bold">
+                          Pares
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-gray-500 mt-2">Esta meta é usada para calcular as porcentagens de progresso no dashboard principal.</p>
                     </div>
                   </CardContent>
                 </Card>
