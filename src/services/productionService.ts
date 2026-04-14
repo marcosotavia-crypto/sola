@@ -187,6 +187,27 @@ export const productionService = {
     }
   },
 
+  async bulkUpdateStatus(itemsToUpdate: { id: string }[], status: ProductionStatus, operatorName: string): Promise<void> {
+    if (!db) return;
+    try {
+      const batch = writeBatch(db);
+      const timestamp = Date.now();
+      
+      itemsToUpdate.forEach(item => {
+        const docRef = doc(db, COLLECTION_NAME, item.id);
+        batch.update(docRef, {
+          status,
+          producedBy: operatorName,
+          updatedAt: timestamp
+        });
+      });
+
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, COLLECTION_NAME);
+    }
+  },
+
   async getOperators(): Promise<any[]> {
     if (!db) return [];
     try {

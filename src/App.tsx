@@ -33,8 +33,30 @@ import {
   Database,
   RotateCcw,
   BarChart3,
-  Trophy
+  Trophy,
+  Target,
+  Zap,
+  PieChart,
+  ChevronDown,
+  ChevronUp,
+  Layers,
+  FileDown
 } from 'lucide-react';
+import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer, 
+  Cell,
+  AreaChart,
+  Area,
+  LineChart,
+  Line,
+  Legend
+} from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
 import BarcodeComponent from 'react-barcode';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -98,7 +120,27 @@ function AppContent() {
   const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
   const [progToDelete, setProgToDelete] = useState<string | null>(null);
   const [selectedProgForPrint, setSelectedProgForPrint] = useState<Programming | null>(null);
+  const [selectedLotForPrint, setSelectedLotForPrint] = useState<FootwearItem[] | null>(null);
   const [prodDateFilter, setProdDateFilter] = useState<'today' | 'week' | 'month' | 'all'>('today');
+  const [dailyGoal, setDailyGoal] = useState(() => {
+    const saved = localStorage.getItem('dailyGoal');
+    return saved ? Number(saved) : 500;
+  });
+  const [isEditingGoal, setIsEditingGoal] = useState(false);
+  const [collapsedLots, setCollapsedLots] = useState<Set<string>>(new Set());
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
+
+  // Bulk Completion States
+  const [bulkCompleteOrderNum, setBulkCompleteOrderNum] = useState('');
+  const [bulkCompleteStart, setBulkCompleteStart] = useState('');
+  const [bulkCompleteEnd, setBulkCompleteEnd] = useState('');
+  const [bulkCompleteSize, setBulkCompleteSize] = useState('');
+
+  // Dashboard States
+
+  useEffect(() => {
+    localStorage.setItem('dailyGoal', dailyGoal.toString());
+  }, [dailyGoal]);
 
   useEffect(() => {
     if (!db) return;
@@ -443,6 +485,127 @@ function AppContent() {
     setSizeQuantities(prev => prev.map(sq => sq.size === size ? { ...sq, quantity: Math.max(0, qty) } : sq));
   };
 
+  const stats = {
+    total: items.reduce((acc, i) => acc + (i.quantity || 0), 0),
+    produced: items.filter(i => i.status === 'Produzido').reduce((acc, i) => acc + (i.quantity || 0), 0),
+    pending: items.filter(i => i.status === 'Pendente').reduce((acc, i) => acc + (i.quantity || 0), 0),
+    todayProduced: items.filter(i => {
+      if (i.status !== 'Produzido') return false;
+      const today = new Date().setHours(0,0,0,0);
+      return new Date(i.updatedAt).setHours(0,0,0,0) === today;
+    }).reduce((acc, i) => acc + (i.quantity || 0), 0)
+  };
+
+  // Daily production data for chart
+  const getDailyProductionData = () => {
+    const last7Days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (6 - i));
+      return d.toISOString().split('T')[0];
+    });
+
+    return last7Days.map(date => {
+      const dayProduction = items.filter(item => {
+        if (item.status !== 'Produzido') return false;
+        const itemDate = new Date(item.updatedAt).toISOString().split('T')[0];
+        return itemDate === date;
+      }).reduce((acc, item) => acc + (item.quantity || 0), 0);
+
+      return {
+        date: new Date(date).toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric' }),
+        producao: dayProduction,
+        meta: dailyGoal
+      };
+    });
+  };
+
+  // Top models data
+  const getTopModelsData = () => {
+    const modelCounts: Record<string, number> = {};
+    items.filter(i => i.status === 'Produzido').forEach(item => {
+      modelCounts[item.model] = (modelCounts[item.model] || 0) + (item.quantity || 0);
+    });
+
+    return Object.entries(modelCounts)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5);
+  };
+
+  // Production by size
+  const getSizeProductionData = () => {
+    const sizeCounts: Record<string, number> = {};
+    items.filter(i => i.status === 'Produzido').forEach(item => {
+      sizeCounts[item.size] = (sizeCounts[item.size] || 0) + (item.quantity || 0);
+    });
+
+    return Object.entries(sizeCounts)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  };
+
+  const toggleLotCollapse = (orderNum: string) => {
+    setCollapsedLots(prev => {
+      const next = new Set(prev);
+      if (next.has(orderNum)) {
+        next.delete(orderNum);
+      } else {
+        next.add(orderNum);
+      }
+      return next;
+    });
+  };
+
+  const handleBulkComplete = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!operatorName) {
+      toast.error('Selecione um operador no terminal primeiro');
+      return;
+    }
+
+    const start = parseInt(bulkCompleteStart);
+    const end = parseInt(bulkCompleteEnd);
+
+    if (isNaN(start) || isNaN(end) || start > end) {
+      toast.error('Intervalo de etiquetas inválido');
+      return;
+    }
+
+    if (!bulkCompleteOrderNum) {
+      toast.error('Informe o número do pedido');
+      return;
+    }
+
+    const itemsToUpdate = items.filter(item => {
+      if (item.orderNumber !== bulkCompleteOrderNum) return false;
+      if (item.status === 'Produzido') return false;
+      if (bulkCompleteSize && bulkCompleteSize !== 'all' && item.size !== bulkCompleteSize) return false;
+
+      const match = item.barcode.match(/-L(\d+)-/);
+      if (match) {
+        const seq = parseInt(match[1]);
+        return seq >= start && seq <= end;
+      }
+      return false;
+    });
+
+    if (itemsToUpdate.length === 0) {
+      toast.error('Nenhuma etiqueta pendente encontrada no intervalo especificado');
+      return;
+    }
+
+    try {
+      await productionService.bulkUpdateStatus(itemsToUpdate, 'Produzido', operatorName);
+      toast.success(`${itemsToUpdate.length} etiquetas baixadas com sucesso!`);
+      
+      setBulkCompleteStart('');
+      setBulkCompleteEnd('');
+    } catch (error) {
+      console.error('Erro ao dar baixa em massa:', error);
+      toast.error('Erro ao processar baixa em massa');
+    }
+  };
+
   const filteredItems = items.filter(item => {
     const prog = programmings.find(p => p.id === item.programmingId);
     const progName = prog ? prog.name.toLowerCase() : '';
@@ -453,12 +616,6 @@ function AppContent() {
            item.barcode.toLowerCase().includes(query) ||
            progName.includes(query);
   });
-
-  const stats = {
-    total: items.reduce((acc, i) => acc + (i.quantity || 0), 0),
-    produced: items.filter(i => i.status === 'Produzido').reduce((acc, i) => acc + (i.quantity || 0), 0),
-    pending: items.filter(i => i.status === 'Pendente').reduce((acc, i) => acc + (i.quantity || 0), 0),
-  };
 
   const getFilteredProduction = () => {
     const now = new Date();
@@ -507,13 +664,20 @@ function AppContent() {
     return acc;
   }, {} as Record<string, FootwearItem[]>);
 
+  const allGroupedItems = items.reduce((acc, item) => {
+    if (!acc[item.orderNumber]) {
+      acc[item.orderNumber] = [];
+    }
+    acc[item.orderNumber].push(item);
+    return acc;
+  }, {} as Record<string, FootwearItem[]>);
+
   const handlePrint = () => {
     window.print();
   };
 
   const handlePrintAll = (orderItems: FootwearItem[]) => {
-    toast.info('Preparando etiquetas para impressão...');
-    window.print();
+    setSelectedLotForPrint(orderItems);
   };
 
   return (
@@ -591,45 +755,74 @@ function AppContent() {
       </aside>
 
       {/* Main Content Area */}
-      <main className="ml-20 md:ml-64 p-4 md:p-8 min-h-screen print:ml-0 print:p-0">
-        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 print:hidden">
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight">
-              {activeTab === 'dashboard' && 'Visão Geral da Produção'}
-              {activeTab === 'new-order' && 'Configurar Novo Lote'}
-              {activeTab === 'programmings' && 'Programação de Produção'}
-              {activeTab === 'scanner' && 'Terminal de Leitura'}
-              {activeTab === 'operators' && 'Gestão de Equipe'}
-              {activeTab === 'operator-production' && 'Produção por Operador'}
-              {activeTab === 'materials' && 'Gestão de Materiais'}
-              {activeTab === 'settings' && 'Configurações do Sistema'}
-            </h2>
-            <p className="text-gray-500 text-sm">
-              {activeTab === 'dashboard' && 'Acompanhe o status de todos os pedidos em tempo real.'}
-              {activeTab === 'new-order' && 'Defina a grade e gere as etiquetas de rastreamento.'}
-              {activeTab === 'programmings' && 'Agrupe pedidos em programações semanais ou diárias.'}
-              {activeTab === 'scanner' && 'Utilize o leitor de código de barras para registrar a produção.'}
-              {activeTab === 'operators' && 'Cadastre e gerencie os operadores da fábrica.'}
-              {activeTab === 'operator-production' && 'Análise de produtividade individual e rankings.'}
-              {activeTab === 'materials' && 'Gerencie o cadastro de materiais e consumo por modelo.'}
-              {activeTab === 'settings' && 'Gerencie as preferências e exportação de dados do aplicativo.'}
-            </p>
+      <main className="ml-20 md:ml-64 p-0 min-h-screen print:ml-0 print:p-0">
+        <header className="relative h-48 md:h-64 overflow-hidden flex flex-col justify-end p-6 md:p-8 print:hidden">
+          <div className="absolute inset-0 z-0">
+            <img 
+              src={
+                activeTab === 'dashboard' ? 'https://picsum.photos/seed/factory-analytics/1920/1080?blur=2' :
+                activeTab === 'new-order' ? 'https://picsum.photos/seed/footwear-production/1920/1080?blur=2' :
+                activeTab === 'programmings' ? 'https://picsum.photos/seed/planning-schedule/1920/1080?blur=2' :
+                activeTab === 'scanner' ? 'https://picsum.photos/seed/barcode-logistics/1920/1080?blur=2' :
+                activeTab === 'operators' ? 'https://picsum.photos/seed/team-collaboration/1920/1080?blur=2' :
+                activeTab === 'operator-production' ? 'https://picsum.photos/seed/performance-trophy/1920/1080?blur=2' :
+                activeTab === 'materials' ? 'https://picsum.photos/seed/leather-fabrics/1920/1080?blur=2' :
+                'https://picsum.photos/seed/engineering-setup/1920/1080?blur=2'
+              }
+              alt="Header Background"
+              className="w-full h-full object-cover opacity-40"
+              referrerPolicy="no-referrer"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-brand-bg via-brand-bg/60 to-transparent" />
           </div>
 
-          <div className="flex items-center gap-4 w-full md:w-auto">
-            <div className="relative flex-1 md:w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-              <Input 
-                placeholder="Buscar pedido..." 
-                className="pl-10 bg-brand-card border-brand-border focus-visible:ring-brand-accent"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
+          <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+            <div>
+              <h2 className="text-3xl md:text-4xl font-black tracking-tighter text-gray-900 uppercase">
+                {activeTab === 'dashboard' && 'Visão Geral'}
+                {activeTab === 'new-order' && 'Novo Lote'}
+                {activeTab === 'programmings' && 'Programação'}
+                {activeTab === 'scanner' && 'Terminal'}
+                {activeTab === 'operators' && 'Equipe'}
+                {activeTab === 'operator-production' && 'Produção'}
+                {activeTab === 'materials' && 'Materiais'}
+                {activeTab === 'settings' && 'Configurações'}
+              </h2>
+              <p className="text-gray-600 text-sm font-medium max-w-md">
+                {activeTab === 'dashboard' && 'Acompanhe o status de todos os pedidos em tempo real com análise de dados avançada.'}
+                {activeTab === 'new-order' && 'Configure novos lotes de produção e gere etiquetas inteligentes.'}
+                {activeTab === 'programmings' && 'Gerencie o cronograma de produção e agrupe pedidos estrategicamente.'}
+                {activeTab === 'scanner' && 'Registre a produção instantaneamente através da leitura de códigos de barras.'}
+                {activeTab === 'operators' && 'Gerencie o capital humano e as permissões de acesso da fábrica.'}
+                {activeTab === 'operator-production' && 'Analise detalhadamente o desempenho e produtividade de cada colaborador.'}
+                {activeTab === 'materials' && 'Controle o estoque e o consumo de matérias-primas por modelo.'}
+                {activeTab === 'settings' && 'Personalize as preferências do sistema e realize exportações de segurança.'}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-4 w-full md:w-auto">
+              <div className="relative flex-1 md:w-80">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                <Input 
+                  placeholder="Buscar pedido, modelo ou código..." 
+                  className="pl-10 pr-10 h-12 bg-white/80 backdrop-blur-sm border-brand-border focus-visible:ring-brand-accent shadow-lg"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                {searchQuery && (
+                  <button 
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </header>
 
-        <div className="print:hidden">
+        <div className="p-4 md:p-8 pt-0 print:hidden">
           <Tabs value={activeTab} className="w-full">
             <AnimatePresence mode="wait">
             <TabsContent value="dashboard" key="dashboard">
@@ -643,21 +836,42 @@ function AppContent() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   <Card className="bg-brand-card border-brand-border overflow-hidden relative group">
                     <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                      <Activity size={64} />
+                      <Target size={64} />
                     </div>
                     <CardHeader className="pb-2">
-                      <CardDescription className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Total de Pares</CardDescription>
-                      <CardTitle className="text-3xl font-mono">{(stats.total || 0)}</CardTitle>
+                      <CardDescription className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Meta Diária</CardDescription>
+                      <CardTitle className="text-3xl font-mono flex items-center justify-between">
+                        {isEditingGoal ? (
+                          <Input 
+                            type="number" 
+                            className="h-8 w-24 text-xl font-mono" 
+                            value={dailyGoal} 
+                            onChange={(e) => setDailyGoal(Number(e.target.value))}
+                            onBlur={() => setIsEditingGoal(false)}
+                            autoFocus
+                          />
+                        ) : (
+                          <span onClick={() => setIsEditingGoal(true)} className="cursor-pointer hover:text-brand-accent transition-colors">
+                            {dailyGoal}
+                          </span>
+                        )}
+                        <span className="text-xs font-sans font-normal text-gray-400">Pares</span>
+                      </CardTitle>
                     </CardHeader>
                   </Card>
                   
                   <Card className="bg-brand-card border-brand-border overflow-hidden relative group">
                     <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity text-brand-accent">
-                      <CheckCircle2 size={64} />
+                      <Zap size={64} />
                     </div>
                     <CardHeader className="pb-2">
-                      <CardDescription className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Produzidos</CardDescription>
-                      <CardTitle className="text-3xl font-mono text-brand-accent">{(stats.produced || 0)}</CardTitle>
+                      <CardDescription className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Produção Hoje</CardDescription>
+                      <CardTitle className="text-3xl font-mono text-brand-accent">
+                        {stats.todayProduced}
+                        <span className="text-xs font-sans font-normal text-gray-400 ml-2">
+                          ({Math.round((stats.todayProduced / dailyGoal) * 100)}%)
+                        </span>
+                      </CardTitle>
                     </CardHeader>
                   </Card>
 
@@ -666,8 +880,8 @@ function AppContent() {
                       <Clock size={64} />
                     </div>
                     <CardHeader className="pb-2">
-                      <CardDescription className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Pendentes</CardDescription>
-                      <CardTitle className="text-3xl font-mono text-amber-500">{(stats.pending || 0)}</CardTitle>
+                      <CardDescription className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Total Pendente</CardDescription>
+                      <CardTitle className="text-3xl font-mono text-amber-500">{stats.pending}</CardTitle>
                     </CardHeader>
                   </Card>
 
@@ -676,16 +890,236 @@ function AppContent() {
                       <TrendingUp size={64} />
                     </div>
                     <CardHeader className="pb-2">
-                      <CardDescription className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Eficiência</CardDescription>
+                      <CardDescription className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Eficiência Geral</CardDescription>
                       <CardTitle className="text-3xl font-mono text-blue-500">
-                        {(stats.total > 0 && !isNaN(stats.produced)) ? Math.round((stats.produced / stats.total) * 100) : 0}%
+                        {stats.total > 0 ? Math.round((stats.produced / stats.total) * 100) : 0}%
                       </CardTitle>
                     </CardHeader>
                   </Card>
                 </div>
 
+                {/* Charts Section */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <Card className="lg:col-span-2 bg-brand-card border-brand-border">
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle className="text-lg font-bold">Produção vs Meta</CardTitle>
+                          <CardDescription>Acompanhamento dos últimos 7 dias</CardDescription>
+                        </div>
+                        <BarChart3 className="text-gray-400" size={20} />
+                      </div>
+                    </CardHeader>
+                    <CardContent className="h-[300px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={getDailyProductionData()}>
+                          <defs>
+                            <linearGradient id="colorProd" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#000" stopOpacity={0.1}/>
+                              <stop offset="95%" stopColor="#000" stopOpacity={0}/>
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                          <XAxis 
+                            dataKey="date" 
+                            axisLine={false} 
+                            tickLine={false} 
+                            tick={{ fontSize: 10, fill: '#9ca3af' }}
+                          />
+                          <YAxis 
+                            axisLine={false} 
+                            tickLine={false} 
+                            tick={{ fontSize: 10, fill: '#9ca3af' }}
+                          />
+                          <Tooltip 
+                            contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                          />
+                          <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '10px', paddingBottom: '20px' }} />
+                          <Area 
+                            type="monotone" 
+                            dataKey="producao" 
+                            name="Produção Real" 
+                            stroke="#000" 
+                            strokeWidth={2}
+                            fillOpacity={1} 
+                            fill="url(#colorProd)" 
+                          />
+                          <Line 
+                            type="monotone" 
+                            dataKey="meta" 
+                            name="Meta Diária" 
+                            stroke="#9ca3af" 
+                            strokeDasharray="5 5" 
+                            dot={false}
+                          />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-brand-card border-brand-border">
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle className="text-lg font-bold">Modelos Top</CardTitle>
+                          <CardDescription>Mais produzidos</CardDescription>
+                        </div>
+                        <PieChart className="text-gray-400" size={20} />
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        {getTopModelsData().map((model, idx) => (
+                          <div key={model.name} className="space-y-1">
+                            <div className="flex justify-between text-xs">
+                              <span className="font-bold text-gray-700">{model.name}</span>
+                              <span className="font-mono text-gray-500">{model.value} pares</span>
+                            </div>
+                            <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                              <motion.div 
+                                initial={{ width: 0 }}
+                                animate={{ width: `${(model.value / getTopModelsData()[0].value) * 100}%` }}
+                                className="h-full bg-brand-accent"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                        {getTopModelsData().length === 0 && (
+                          <p className="text-center py-10 text-xs text-gray-500 italic">Sem dados de produção</p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <Card className="bg-brand-card border-brand-border">
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle className="text-lg font-bold">Produção por Tamanho</CardTitle>
+                          <CardDescription>Distribuição de grade</CardDescription>
+                        </div>
+                        <Maximize2 className="text-gray-400" size={20} />
+                      </div>
+                    </CardHeader>
+                    <CardContent className="h-[200px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={getSizeProductionData()}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                          <XAxis 
+                            dataKey="name" 
+                            axisLine={false} 
+                            tickLine={false} 
+                            tick={{ fontSize: 10, fill: '#9ca3af' }}
+                          />
+                          <YAxis hide />
+                          <Tooltip 
+                            cursor={{ fill: '#f9fafb' }}
+                            contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }}
+                          />
+                          <Bar dataKey="value" name="Pares" radius={[4, 4, 0, 0]}>
+                            {getSizeProductionData().map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={index % 2 === 0 ? '#000' : '#4b5563'} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="lg:col-span-2 bg-brand-card border-brand-border">
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle className="text-lg font-bold">Lotes em Andamento</CardTitle>
+                          <CardDescription>Acompanhamento de progresso</CardDescription>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-8 w-8 p-0"
+                            onClick={() => toggleLotCollapse('dashboard-active-lots')}
+                          >
+                            {collapsedLots.has('dashboard-active-lots') ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                          </Button>
+                          <Package className="text-gray-400" size={20} />
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <AnimatePresence initial={false}>
+                      {!collapsedLots.has('dashboard-active-lots') && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          className="overflow-hidden"
+                        >
+                          <CardContent>
+                            <div className="space-y-4">
+                              {(Object.entries(allGroupedItems) as [string, FootwearItem[]][])
+                                .filter(([_, items]) => items.some(i => i.status === 'Pendente'))
+                                .sort((a,b) => (b[1][0].createdAt || 0) - (a[1][0].createdAt || 0))
+                                .slice(0, 5)
+                                .map(([orderNum, orderItems]) => {
+                                  const prog = Math.round((orderItems.filter(i => i.status === 'Produzido').length / orderItems.length) * 100);
+                                  return (
+                                    <div key={orderNum} className="flex items-center gap-4 p-3 rounded-lg border border-brand-border hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => {
+                                      setSearchQuery(orderNum);
+                                      setActiveTab('dashboard');
+                                      setTimeout(() => {
+                                        document.getElementById('detailed-list')?.scrollIntoView({ behavior: 'smooth' });
+                                      }, 100);
+                                    }}>
+                                      <div className="h-10 w-10 rounded bg-brand-accent/5 flex items-center justify-center text-brand-accent">
+                                        <Package size={18} />
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex justify-between items-start">
+                                          <p className="text-sm font-bold font-mono truncate">#{orderNum}</p>
+                                          <span className="text-[10px] font-mono font-bold text-brand-accent">{prog}%</span>
+                                        </div>
+                                        <p className="text-[10px] text-gray-500 truncate">{orderItems[0].model} • {orderItems[0].color}</p>
+                                        <div className="mt-1.5 h-1 w-full bg-gray-100 rounded-full overflow-hidden">
+                                          <div className="h-full bg-brand-accent" style={{ width: `${prog}%` }} />
+                                        </div>
+                                      </div>
+                                      <ArrowRight size={14} className="text-gray-300" />
+                                    </div>
+                                  );
+                                })}
+                              {Object.keys(allGroupedItems).length === 0 && (
+                                <p className="text-center py-10 text-xs text-gray-500 italic">Nenhum lote ativo</p>
+                              )}
+                            </div>
+                          </CardContent>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </Card>
+                </div>
+
+                {/* Orders List Title */}
+                <div className="flex items-center justify-between pt-4 border-t border-brand-border">
+                  <div className="flex items-center gap-4">
+                    <h3 className="text-sm font-bold uppercase tracking-widest text-gray-500">Lista Detalhada de Pedidos</h3>
+                    {searchQuery && (
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="h-6 px-2 text-[10px] text-brand-accent hover:bg-brand-accent/10"
+                        onClick={() => setSearchQuery('')}
+                      >
+                        <X size={12} className="mr-1" /> Limpar Filtro
+                      </Button>
+                    )}
+                  </div>
+                  <Badge variant="outline" className="font-mono">{Object.keys(groupedItems).length} Pedidos</Badge>
+                </div>
+
                 {/* Orders List */}
-                <div className="space-y-6">
+                <div id="detailed-list" className="space-y-6">
                   {(Object.entries(groupedItems) as [string, FootwearItem[]][]).sort((a,b) => (b[1][0].createdAt || 0) - (a[1][0].createdAt || 0)).map(([orderNum, orderItems], idx) => (
                     <motion.div
                       key={orderNum}
@@ -741,6 +1175,14 @@ function AppContent() {
                             </div>
                             
                             <div className="flex gap-2">
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="h-8 w-8 p-0 text-gray-500 hover:bg-gray-100" 
+                                onClick={() => toggleLotCollapse(orderNum)}
+                              >
+                                {collapsedLots.has(orderNum) ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                              </Button>
                               <Button variant="outline" size="sm" className="h-8 bg-transparent border-brand-border hover:bg-gray-100" onClick={() => handlePrintAll(orderItems)}>
                                 <Printer size={14} className="mr-2" /> Etiquetas
                               </Button>
@@ -751,76 +1193,119 @@ function AppContent() {
                           </div>
                         </div>
 
-                        <div className="overflow-x-auto">
-                          <Table>
-                            <TableHeader>
-                              <TableRow className="hover:bg-transparent border-brand-border">
-                                <TableHead className="font-mono text-[10px] uppercase tracking-widest text-gray-500 py-4">Tam</TableHead>
-                                <TableHead className="font-mono text-[10px] uppercase tracking-widest text-gray-500 py-4">Qtd</TableHead>
-                                <TableHead className="font-mono text-[10px] uppercase tracking-widest text-gray-500 py-4">Barcode ID</TableHead>
-                                <TableHead className="font-mono text-[10px] uppercase tracking-widest text-gray-500 py-4">Status</TableHead>
-                                <TableHead className="font-mono text-[10px] uppercase tracking-widest text-gray-500 py-4">Operador</TableHead>
-                                <TableHead className="font-mono text-[10px] uppercase tracking-widest text-gray-500 py-4">Data/Hora</TableHead>
-                                <TableHead className="font-mono text-[10px] uppercase tracking-widest text-gray-500 py-4 text-right">Ação</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {orderItems.sort((a,b) => a.size.localeCompare(b.size)).map((item) => (
-                                <TableRow key={item.id} className="border-brand-border hover:bg-gray-50 transition-colors group/row">
-                                  <TableCell className="font-mono font-bold text-brand-accent">{item.size}</TableCell>
-                                  <TableCell className="font-mono text-sm text-gray-900">{(item.quantity || 0)} <span className="text-[10px] text-gray-500">PARES</span></TableCell>
-                                  <TableCell>
-                                    <code className="font-mono text-[10px] bg-gray-100 px-2 py-1 rounded border border-brand-border text-gray-900">{item.barcode}</code>
-                                  </TableCell>
-                                  <TableCell>
-                                    <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                      item.status === 'Produzido' 
-                                        ? 'bg-brand-accent/10 text-brand-accent' 
-                                        : 'bg-amber-500/10 text-amber-500'
-                                    }`}>
-                                      <div className={`h-1 w-1 rounded-full ${item.status === 'Produzido' ? 'bg-brand-accent' : 'bg-amber-500'}`} />
-                                      {item.status}
-                                    </div>
-                                  </TableCell>
-                                  <TableCell>
-                                    <span className="text-[10px] font-mono text-gray-400 uppercase">{item.producedBy || '-'}</span>
-                                  </TableCell>
-                                  <TableCell>
-                                    <span className="text-[10px] font-mono text-gray-400">
-                                      {item.status === 'Produzido' ? new Date(item.updatedAt).toLocaleString('pt-BR', {
-                                        day: '2-digit',
-                                        month: '2-digit',
-                                        hour: '2-digit',
-                                        minute: '2-digit'
-                                      }) : '-'}
-                                    </span>
-                                  </TableCell>
-                                  <TableCell className="text-right">
-                                    <div className="flex justify-end gap-1 md:opacity-0 md:group-hover/row:opacity-100 opacity-100 transition-opacity">
-                                      <Button 
-                                        variant="ghost" 
-                                        size="icon" 
-                                        className={`h-7 w-7 rounded ${item.status === 'Produzido' ? 'text-amber-500 hover:bg-amber-500/10' : 'text-brand-accent hover:bg-brand-accent/10'}`}
-                                        onClick={() => handleManualStatusToggle(item)}
-                                        title={item.status === 'Produzido' ? 'Voltar para Pendente' : 'Marcar como Produzido'}
-                                      >
-                                        {item.status === 'Produzido' ? <RotateCcw size={14} /> : <CheckCircle2 size={14} />}
-                                      </Button>
-                                      <Button 
-                                        variant="ghost" 
-                                        size="icon" 
-                                        className="h-7 w-7 rounded text-gray-400 hover:text-gray-900 hover:bg-gray-100"
-                                        onClick={() => setSelectedItem(item)}
-                                      >
-                                        <Maximize2 size={14} />
-                                      </Button>
-                                    </div>
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </div>
+                        <AnimatePresence initial={false}>
+                          {!collapsedLots.has(orderNum) && (
+                            <motion.div 
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="overflow-x-auto">
+                                <Table>
+                                  <TableHeader>
+                                    <TableRow className="hover:bg-transparent border-brand-border">
+                                      <TableHead className="w-10 py-4">
+                                        <input 
+                                          type="checkbox" 
+                                          className="rounded border-gray-300 text-brand-accent focus:ring-brand-accent h-4 w-4"
+                                          checked={orderItems.every(i => selectedItems.has(i.id))}
+                                          onChange={(e) => {
+                                            const newSelected = new Set(selectedItems);
+                                            if (e.target.checked) {
+                                              orderItems.forEach(i => newSelected.add(i.id));
+                                            } else {
+                                              orderItems.forEach(i => newSelected.delete(i.id));
+                                            }
+                                            setSelectedItems(newSelected);
+                                          }}
+                                        />
+                                      </TableHead>
+                                      <TableHead className="font-mono text-[10px] uppercase tracking-widest text-gray-500 py-4">Tam</TableHead>
+                                      <TableHead className="font-mono text-[10px] uppercase tracking-widest text-gray-500 py-4">Qtd</TableHead>
+                                      <TableHead className="font-mono text-[10px] uppercase tracking-widest text-gray-500 py-4">Barcode ID</TableHead>
+                                      <TableHead className="font-mono text-[10px] uppercase tracking-widest text-gray-500 py-4">Status</TableHead>
+                                      <TableHead className="font-mono text-[10px] uppercase tracking-widest text-gray-500 py-4">Operador</TableHead>
+                                      <TableHead className="font-mono text-[10px] uppercase tracking-widest text-gray-500 py-4">Data/Hora</TableHead>
+                                      <TableHead className="font-mono text-[10px] uppercase tracking-widest text-gray-500 py-4 text-right">Ação</TableHead>
+                                    </TableRow>
+                                  </TableHeader>
+                                  <TableBody>
+                                    {orderItems.sort((a,b) => a.size.localeCompare(b.size)).map((item) => (
+                                      <TableRow key={item.id} className="border-brand-border hover:bg-gray-50 transition-colors group/row">
+                                        <TableCell className="py-4">
+                                          <input 
+                                            type="checkbox" 
+                                            className="rounded border-gray-300 text-brand-accent focus:ring-brand-accent h-4 w-4"
+                                            checked={selectedItems.has(item.id)}
+                                            onChange={() => {
+                                              const newSelected = new Set(selectedItems);
+                                              if (newSelected.has(item.id)) {
+                                                newSelected.delete(item.id);
+                                              } else {
+                                                newSelected.add(item.id);
+                                              }
+                                              setSelectedItems(newSelected);
+                                            }}
+                                          />
+                                        </TableCell>
+                                        <TableCell className="font-mono font-bold text-brand-accent">{item.size}</TableCell>
+                                        <TableCell className="font-mono text-sm text-gray-900">{(item.quantity || 0)} <span className="text-[10px] text-gray-500">PARES</span></TableCell>
+                                        <TableCell>
+                                          <code className="font-mono text-[10px] bg-gray-100 px-2 py-1 rounded border border-brand-border text-gray-900">{item.barcode}</code>
+                                        </TableCell>
+                                        <TableCell>
+                                          <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                            item.status === 'Produzido' 
+                                              ? 'bg-brand-accent/10 text-brand-accent' 
+                                              : 'bg-amber-500/10 text-amber-500'
+                                          }`}>
+                                            <div className={`h-1 w-1 rounded-full ${item.status === 'Produzido' ? 'bg-brand-accent' : 'bg-amber-500'}`} />
+                                            {item.status}
+                                          </div>
+                                        </TableCell>
+                                        <TableCell>
+                                          <span className="text-[10px] font-mono text-gray-400 uppercase">{item.producedBy || '-'}</span>
+                                        </TableCell>
+                                        <TableCell>
+                                          <span className="text-[10px] font-mono text-gray-400">
+                                            {item.status === 'Produzido' ? new Date(item.updatedAt).toLocaleString('pt-BR', {
+                                              day: '2-digit',
+                                              month: '2-digit',
+                                              hour: '2-digit',
+                                              minute: '2-digit'
+                                            }) : '-'}
+                                          </span>
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                          <div className="flex justify-end gap-1 md:opacity-0 md:group-hover/row:opacity-100 opacity-100 transition-opacity">
+                                            <Button 
+                                              variant="ghost" 
+                                              size="icon" 
+                                              className={`h-7 w-7 rounded ${item.status === 'Produzido' ? 'text-amber-500 hover:bg-amber-500/10' : 'text-brand-accent hover:bg-brand-accent/10'}`}
+                                              onClick={() => handleManualStatusToggle(item)}
+                                              title={item.status === 'Produzido' ? 'Voltar para Pendente' : 'Marcar como Produzido'}
+                                            >
+                                              {item.status === 'Produzido' ? <RotateCcw size={14} /> : <CheckCircle2 size={14} />}
+                                            </Button>
+                                            <Button 
+                                              variant="ghost" 
+                                              size="icon" 
+                                              className="h-7 w-7 rounded text-gray-400 hover:text-gray-900 hover:bg-gray-100"
+                                              onClick={() => setSelectedItem(item)}
+                                            >
+                                              <Maximize2 size={14} />
+                                            </Button>
+                                          </div>
+                                        </TableCell>
+                                      </TableRow>
+                                    ))}
+                                  </TableBody>
+                                </Table>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </Card>
                     </motion.div>
                   ))}
@@ -833,15 +1318,16 @@ function AppContent() {
                 initial={{ opacity: 0, scale: 0.98 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.98 }}
-                className="max-w-4xl mx-auto"
+                className="max-w-4xl mx-auto space-y-8"
               >
+                {/* Card 1: Automatic Lot Creation */}
                 <Card className="bg-brand-card border-brand-border shadow-2xl">
                   <CardHeader className="border-b border-brand-border pb-6">
                     <CardTitle className="text-xl flex items-center gap-2">
                       <Plus className="text-brand-accent" size={20} />
-                      Configuração de Lote
+                      Configuração de Lote Automático
                     </CardTitle>
-                    <CardDescription>Preencha os dados técnicos para gerar as etiquetas de rastreamento.</CardDescription>
+                    <CardDescription>Preencha os dados técnicos para gerar as etiquetas de rastreamento no banco de dados.</CardDescription>
                   </CardHeader>
                   <CardContent className="pt-8">
                     <form onSubmit={handleCreateOrder} className="space-y-10">
@@ -1086,6 +1572,9 @@ function AppContent() {
                               <Button variant="outline" size="sm" className="border-brand-border hover:bg-gray-100 text-gray-900" onClick={() => {
                                 setSearchQuery(prog.name); // Filter by programming name
                                 setActiveTab('dashboard');
+                                setTimeout(() => {
+                                  document.getElementById('detailed-list')?.scrollIntoView({ behavior: 'smooth' });
+                                }, 100);
                               }}>
                                 Ver Detalhes <ArrowRight size={14} className="ml-2" />
                               </Button>
@@ -1104,102 +1593,171 @@ function AppContent() {
                 initial={{ opacity: 0, scale: 0.98 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.98 }}
-                className="max-w-2xl mx-auto"
+                className="max-w-4xl mx-auto space-y-8"
               >
-                <Card className="bg-brand-card border-brand-border shadow-2xl overflow-hidden">
-                  <div className="h-2 bg-brand-accent scan-glow" />
-                  <CardHeader className="text-center pt-10">
-                    <div className="mx-auto bg-brand-accent/10 p-6 rounded-full w-fit mb-6 border border-brand-accent/20">
-                      <Barcode size={48} className="text-brand-accent" />
-                    </div>
-                    <CardTitle className="text-3xl font-bold tracking-tighter">TERMINAL DE LEITURA</CardTitle>
-                    <CardDescription className="text-gray-500">Aguardando entrada do scanner de código de barras...</CardDescription>
-                  </CardHeader>
-                  <CardContent className="pb-12 px-10">
-                    <form onSubmit={handleScan} className="space-y-6">
-                      <div className="space-y-2">
-                        <Label htmlFor="operator" className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Operador Responsável</Label>
-                        <Select value={operatorName} onValueChange={setOperatorName}>
-                          <SelectTrigger className="bg-gray-50 border-brand-border font-mono h-12 text-gray-900">
-                            <SelectValue placeholder="SELECIONE O OPERADOR" />
-                          </SelectTrigger>
-                          <SelectContent className="bg-brand-card border-brand-border text-gray-900">
-                            {operators.map(op => (
-                              <SelectItem key={op.id} value={op.name} className="focus:bg-brand-accent focus:text-white">
-                                {op.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  {/* Single Scan Card */}
+                  <Card className="bg-brand-card border-brand-border shadow-2xl overflow-hidden">
+                    <div className="h-2 bg-brand-accent scan-glow" />
+                    <CardHeader className="text-center pt-10">
+                      <div className="mx-auto bg-brand-accent/10 p-6 rounded-full w-fit mb-6 border border-brand-accent/20">
+                        <Barcode size={48} className="text-brand-accent" />
                       </div>
+                      <CardTitle className="text-2xl font-bold tracking-tighter uppercase">Leitura Individual</CardTitle>
+                      <CardDescription className="text-gray-500">Aguardando entrada do scanner...</CardDescription>
+                    </CardHeader>
+                    <CardContent className="pb-12 px-10">
+                      <form onSubmit={handleScan} className="space-y-6">
+                        <div className="space-y-2">
+                          <Label htmlFor="operator" className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Operador Responsável</Label>
+                          <Select value={operatorName} onValueChange={setOperatorName}>
+                            <SelectTrigger className="bg-gray-50 border-brand-border font-mono h-12 text-gray-900">
+                              <SelectValue placeholder="SELECIONE O OPERADOR" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-brand-card border-brand-border text-gray-900">
+                              {operators.map(op => (
+                                <SelectItem key={op.id} value={op.name} className="focus:bg-brand-accent focus:text-white">
+                                  {op.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
 
-                      <div className="relative">
-                        <Input 
-                          autoFocus
-                          placeholder="SCAN BARCODE" 
-                          className="bg-gray-50 border-brand-border text-brand-accent text-center text-3xl py-12 font-mono tracking-[0.2em] focus-visible:ring-brand-accent/50 placeholder:text-gray-300"
-                          value={scanInput}
-                          onChange={e => setScanInput(e.target.value)}
-                        />
-                        <div className="absolute inset-y-0 left-0 w-1 bg-brand-accent/50" />
-                        <div className="absolute inset-y-0 right-0 w-1 bg-brand-accent/50" />
-                      </div>
-                      <Button type="submit" className="w-full bg-gray-100 hover:bg-gray-200 text-gray-500 py-6 font-mono text-xs tracking-widest uppercase border border-brand-border">
-                        Confirmar Entrada Manual
-                      </Button>
-                    </form>
+                        <div className="relative">
+                          <Input 
+                            autoFocus
+                            placeholder="SCAN BARCODE" 
+                            className="bg-gray-50 border-brand-border text-brand-accent text-center text-2xl py-10 font-mono tracking-[0.2em] focus-visible:ring-brand-accent/50 placeholder:text-gray-300"
+                            value={scanInput}
+                            onChange={e => setScanInput(e.target.value)}
+                          />
+                        </div>
+                        <Button type="submit" className="w-full bg-gray-100 hover:bg-gray-200 text-gray-500 py-6 font-mono text-xs tracking-widest uppercase border border-brand-border">
+                          Confirmar Entrada Manual
+                        </Button>
+                      </form>
+                    </CardContent>
+                  </Card>
 
-                    <div className="mt-12">
-                      <div className="flex items-center justify-between mb-4">
-                        <h4 className="text-[10px] uppercase tracking-widest text-gray-500 font-bold">Histórico Recente</h4>
-                        <Activity size={12} className="text-brand-accent animate-pulse" />
+                  {/* Bulk Completion Card */}
+                  <Card className="bg-brand-card border-brand-border shadow-2xl overflow-hidden">
+                    <div className="h-2 bg-amber-500" />
+                    <CardHeader className="text-center pt-10">
+                      <div className="mx-auto bg-amber-500/10 p-6 rounded-full w-fit mb-6 border border-amber-500/20">
+                        <Layers size={48} className="text-amber-500" />
                       </div>
-                      <div className="space-y-3">
-                        {items.filter(i => i.status === 'Produzido').sort((a,b) => (b.updatedAt || 0) - (a.updatedAt || 0)).slice(0, 4).map((item, idx) => (
-                          <motion.div 
-                            key={item.id} 
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: idx * 0.1 }}
-                            className="flex justify-between items-center bg-brand-bg/50 p-4 rounded-lg border border-brand-border group"
-                          >
-                            <div className="flex items-center gap-4">
-                              <div className="h-8 w-8 rounded bg-brand-accent/20 flex items-center justify-center text-brand-accent">
-                                <CheckCircle2 size={16} />
-                              </div>
-                              <div>
-                                <p className="font-bold text-sm font-mono tracking-tight text-gray-900">{item.orderNumber} <span className="text-gray-400 mx-1">/</span> {item.model}</p>
-                                <p className="text-[10px] text-gray-500 font-mono uppercase">TAM: {item.size} • {item.barcode}</p>
-                                <p className="text-[9px] text-brand-accent font-mono uppercase mt-1">OPERADOR: {item.producedBy}</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <span className="text-[10px] font-mono text-gray-600">
-                                {new Date(item.updatedAt).toLocaleString('pt-BR', {
-                                  day: '2-digit',
-                                  month: '2-digit',
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })}
-                              </span>
-                              <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                className="h-8 w-8 text-amber-500 hover:bg-amber-500/10 md:opacity-0 md:group-hover:opacity-100 opacity-100 transition-opacity"
-                                onClick={() => handleManualStatusToggle(item)}
-                                title="Reverter para Pendente"
-                              >
-                                <RotateCcw size={14} />
-                              </Button>
-                            </div>
-                          </motion.div>
-                        ))}
-                        {items.filter(i => i.status === 'Produzido').length === 0 && (
-                          <div className="text-center py-8 text-gray-700 font-mono text-xs italic">
-                            Nenhuma leitura registrada nesta sessão.
+                      <CardTitle className="text-2xl font-bold tracking-tighter uppercase">Baixa em Massa</CardTitle>
+                      <CardDescription className="text-gray-500">Dê baixa em um intervalo de etiquetas de uma só vez.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="pb-12 px-10">
+                      <form onSubmit={handleBulkComplete} className="space-y-6">
+                        <div className="space-y-2">
+                          <Label className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Nº do Pedido</Label>
+                          <Input 
+                            placeholder="Ex: PED1001" 
+                            className="bg-gray-50 border-brand-border font-mono h-12 text-gray-900"
+                            value={bulkCompleteOrderNum}
+                            onChange={e => setBulkCompleteOrderNum(e.target.value)}
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Início (L1, L2...)</Label>
+                            <Input 
+                              placeholder="1" 
+                              className="bg-gray-50 border-brand-border font-mono h-12 text-gray-900"
+                              value={bulkCompleteStart}
+                              onChange={e => setBulkCompleteStart(e.target.value)}
+                            />
                           </div>
-                        )}
-                      </div>
+                          <div className="space-y-2">
+                            <Label className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Fim (L1, L2...)</Label>
+                            <Input 
+                              placeholder="10" 
+                              className="bg-gray-50 border-brand-border font-mono h-12 text-gray-900"
+                              value={bulkCompleteEnd}
+                              onChange={e => setBulkCompleteEnd(e.target.value)}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Tamanho (Opcional)</Label>
+                          <Select value={bulkCompleteSize} onValueChange={setBulkCompleteSize}>
+                            <SelectTrigger className="bg-gray-50 border-brand-border font-mono h-12 text-gray-900">
+                              <SelectValue placeholder="TODOS OS TAMANHOS" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-brand-card border-brand-border text-gray-900">
+                              <SelectItem value="all">TODOS OS TAMANHOS</SelectItem>
+                              {['33','34','35','36','37','38','39','40','41','42','43','44'].map(s => (
+                                <SelectItem key={s} value={s}>{s}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <Button type="submit" className="w-full bg-amber-500 hover:bg-amber-600 text-white py-6 font-mono text-xs tracking-widest uppercase shadow-lg shadow-amber-500/20">
+                          Confirmar Baixa em Massa
+                        </Button>
+                      </form>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Shared History Card */}
+                <Card className="bg-brand-card border-brand-border shadow-2xl">
+                  <CardContent className="pt-8">
+                    <div className="flex items-center justify-between mb-6">
+                      <h4 className="text-[10px] uppercase tracking-widest text-gray-500 font-bold">Histórico de Produção Recente</h4>
+                      <Activity size={12} className="text-brand-accent animate-pulse" />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {items.filter(i => i.status === 'Produzido').sort((a,b) => (b.updatedAt || 0) - (a.updatedAt || 0)).slice(0, 6).map((item, idx) => (
+                        <motion.div 
+                          key={item.id} 
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: idx * 0.05 }}
+                          className="flex justify-between items-center bg-brand-bg/50 p-4 rounded-lg border border-brand-border group"
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className="h-8 w-8 rounded bg-brand-accent/20 flex items-center justify-center text-brand-accent">
+                              <CheckCircle2 size={16} />
+                            </div>
+                            <div>
+                              <p className="font-bold text-sm font-mono tracking-tight text-gray-900">{item.orderNumber} <span className="text-gray-400 mx-1">/</span> {item.model}</p>
+                              <p className="text-[10px] text-gray-500 font-mono uppercase">TAM: {item.size} • {item.barcode}</p>
+                              <p className="text-[9px] text-brand-accent font-mono uppercase mt-1">OPERADOR: {item.producedBy}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-[10px] font-mono text-gray-600">
+                              {new Date(item.updatedAt).toLocaleString('pt-BR', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </span>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-8 w-8 text-amber-500 hover:bg-amber-500/10 md:opacity-0 md:group-hover:opacity-100 opacity-100 transition-opacity"
+                              onClick={() => handleManualStatusToggle(item)}
+                              title="Reverter para Pendente"
+                            >
+                              <RotateCcw size={14} />
+                            </Button>
+                          </div>
+                        </motion.div>
+                      ))}
+                      {items.filter(i => i.status === 'Produzido').length === 0 && (
+                        <div className="col-span-2 text-center py-12 text-gray-700 font-mono text-xs italic">
+                          Nenhuma leitura registrada nesta sessão.
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -1955,6 +2513,90 @@ function AppContent() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Lot Print Preview Modal */}
+      <Dialog open={!!selectedLotForPrint} onOpenChange={(open) => !open && setSelectedLotForPrint(null)}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto bg-brand-card border-brand-border text-gray-900">
+          <DialogHeader className="print:hidden">
+            <DialogTitle className="flex items-center gap-2">
+              <Printer className="text-brand-accent" size={20} />
+              Pré-visualização do Lote #{selectedLotForPrint?.[0]?.orderNumber}
+            </DialogTitle>
+            <DialogDescription>
+              Confira todas as etiquetas do lote antes de imprimir.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg border border-brand-border print:block print:bg-white print:border-none print:p-0">
+            {selectedLotForPrint?.map((item) => (
+              <div key={item.id} className="bg-white p-4 border border-brand-border rounded shadow-sm flex flex-col items-center gap-2 print:break-inside-avoid print:mb-8 print:border-2 print:border-black">
+                <div className="w-full flex justify-between text-[10px] font-bold font-mono border-b pb-1 mb-1 border-gray-200 print:border-black">
+                  <span>MOD: {item.model}</span>
+                  <span>TAM: {item.size}</span>
+                </div>
+                <BarcodeComponent 
+                  value={item.barcode} 
+                  width={1.5} 
+                  height={50} 
+                  fontSize={12}
+                  margin={0}
+                />
+                <div className="w-full flex justify-between text-[10px] font-bold font-mono border-t pt-1 mt-1 border-gray-200 print:border-black">
+                  <span>QTD: {item.quantity}</span>
+                  <span>PED: {item.orderNumber}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <DialogFooter className="gap-2 print:hidden sticky bottom-0 bg-brand-card pt-4 border-t">
+            <Button variant="ghost" onClick={() => setSelectedLotForPrint(null)}>Fechar</Button>
+            <Button className="bg-brand-accent text-white hover:bg-brand-accent/90 flex items-center gap-2" onClick={() => window.print()}>
+              <Printer size={16} /> IMPRIMIR TODAS
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Floating Bulk Actions Bar */}
+      <AnimatePresence>
+        {selectedItems.size > 0 && (
+          <motion.div 
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-6 py-4 rounded-full shadow-2xl z-50 flex items-center gap-6 border border-white/10 backdrop-blur-md print:hidden"
+          >
+            <div className="flex items-center gap-3 border-r border-white/20 pr-6">
+              <div className="h-8 w-8 bg-brand-accent rounded-full flex items-center justify-center font-bold text-sm">
+                {selectedItems.size}
+              </div>
+              <span className="text-sm font-medium">Itens selecionados</span>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <Button 
+                size="sm" 
+                className="bg-brand-accent hover:bg-brand-accent/90 text-white rounded-full px-4 flex items-center gap-2"
+                onClick={() => {
+                  const itemsToPrint = items.filter(i => selectedItems.has(i.id));
+                  setSelectedLotForPrint(itemsToPrint);
+                }}
+              >
+                <Printer size={16} /> Imprimir Etiquetas
+              </Button>
+              <Button 
+                size="sm" 
+                variant="ghost" 
+                className="text-gray-400 hover:text-white hover:bg-white/10 rounded-full px-4"
+                onClick={() => setSelectedItems(new Set())}
+              >
+                Cancelar
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <Toaster theme="dark" position="top-right" />
     </div>
